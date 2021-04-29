@@ -1,0 +1,24 @@
+
+
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+
+ENTITY MUX IS
+	GENERIC ( size: POSITIVE);
+	PORT ( sel 	: IN  STD_LOGIC;
+			 D0   : IN  STD_LOGIC_VECTOR ((size-1) DOWNTO 0);
+			 D1 	: IN  STD_LOGIC_VECTOR ((size-1) DOWNTO 0);
+			 Q 	: OUT STD_LOGIC_VECTOR ((size-1) DOWNTO 0));
+END MUX;
+
+ARCHITECTURE behavioral OF MUX IS
+BEGIN
+
+	GEN :
+	FOR i IN 0 TO size-1 GENERATE
+		MUXInst: ENTITY work.MUX2to1
+		Port Map (sel, D0(i), D1(i), Q(i));
+	END GENERATE;
+
+END;
+
