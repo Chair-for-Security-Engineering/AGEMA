@@ -123,7 +123,7 @@ In particular, the verilog parser observes any attribute preceded by the AGEMA k
 | *constant*    | Keyword for identification of any other control signals or any input which should not be presented in a masked form. |
 | *secure*      | Keyword for identification of signals which should be secured, i.e., represented in a masked form. |
 
-### Example
+##### Example
 
 This example says that the plaintext should be masked but not the key, i.e., key masking is not desired.
 
@@ -168,11 +168,11 @@ In case you get an error message similar to:
 please export the `/lib` directory to your linker library path, e.g., using `export LD_LIBRARY_PATH=``pwd``/lib` before executing the binary.
 
 ## Licensing
-Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Müller, Pascal Sasdrich
+Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai MÃ¼ller, Pascal Sasdrich
 
 All rights reserved.
 
 Please see `LICENSE` for further license instructions.
 
 ## Publications
-D. Knichel, A. Moradi, N. Müller, P. Sasdrich (2021): "Automated Generation of Masked Hardware" https://eprint.iacr.org/2021/
+D. Knichel, A. Moradi, N. MÃ¼ller, P. Sasdrich (2021): "Automated Generation of Masked Hardware" https://eprint.iacr.org/2021/
