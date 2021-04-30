@@ -8,7 +8,7 @@
 // -----------------------------------------------------------------
 //
 //
-// Copyright (c) 2021, David Knichel, Amir Moradi, Niolai Müller, Pascal Sasdrich
+// Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Müller, Pascal Sasdrich
 //
 // All rights reserved.
 //
