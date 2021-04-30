@@ -1,3 +1,7 @@
+//
+// taken from https://github.com/cassiersg/fullverif
+//
+
 (* fv_prop = "NI", fv_strat = "assumed", fv_order=d *)
 module MSKand_DOM #(parameter d=2) (ina, inb, rnd, clk, out);
 

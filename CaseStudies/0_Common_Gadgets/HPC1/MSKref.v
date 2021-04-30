@@ -1,3 +1,7 @@
+//
+// partially taken from https://github.com/cassiersg/fullverif
+//
+
 // SNI refresh gadget, for d=2,...,16
 module MSKref #(parameter d=2) (in, clk, out, rnd);
 

@@ -1,3 +1,7 @@
+//
+// taken from https://github.com/cassiersg/fullverif
+//
+
 function integer _ref_nrnd(input integer d);
 begin
 if (d==2 || d==3) _ref_nrnd = d-1;
