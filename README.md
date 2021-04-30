@@ -42,7 +42,7 @@ Please follow the instructions below to build the AGEMA framework:
 Build the AGEMA framework using the instructions above, and run AGEMA by entering `./bin/release/AGEMA -h`. It shows a help and possible options for the command line.
 
 ## Input (Design)
-AGEMA reads a Verilog netlist of the unprotected design. When the design in VHDL/Verilog is written at the behavioral level, it should be first synthesized by a synthesize, e.g., Design Compiler or Yosis. The resulting netlist should be flattened and should use certain cells. See the instructions below for each synthesizer.
+AGEMA reads a Verilog netlist of the unprotected design. When the design in VHDL/Verilog is written at the behavioral level, it should be first synthesized by a synthesize, e.g., Design Compiler or Yosys. The resulting netlist should be flattened and should use certain cells. See the instructions below for each synthesizer.
 
 ### Synopsis Design Compiler
 
@@ -133,7 +133,7 @@ This example says that the plaintext should be masked but not the key, i.e., key
 ## Input (Library)
 
 In addition to the given netlist, AGEMA needs a library file to understand the meaning of the cells used in the netlist file. 
-A library file is provided in `./AGEMA/cell/Library.txt` which covers all cells in the NANGate 45 (Design Compiler) and the custom library (Yosis) as well as HPC1, HPC2, GHPC and GHPCLL gadgets. The structure of the libary file and how to edit as given inside the aforementioned file.
+A library file is provided in `./AGEMA/cell/Library.txt` which covers all cells in the NANGate 45 (Design Compiler) and the custom library (Yosys) as well as HPC1, HPC2, GHPC and GHPCLL gadgets. The structure of the libary file and how to edit as given inside the aforementioned file.
 
 ## Example
 

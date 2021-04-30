@@ -1,0 +1,17 @@
+read_verilog $VERILOG_FILES
+read_verilog -lib LIB/custom_cells.v
+
+setattr -set keep_hierarchy 1;
+synth -top $TOP_MODULE
+dfflibmap -liberty LIB/custom_cells.lib
+abc -liberty LIB/custom_cells.lib
+opt_clean
+
+stat -liberty LIB/custom_cells.lib
+
+setattr -set keep_hierarchy 0;
+flatten
+select $TOP_MODULE
+insbuf -buf BUF A Y
+
+write_verilog -selected result_netlist.v
