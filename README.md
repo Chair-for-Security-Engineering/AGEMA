@@ -175,4 +175,4 @@ All rights reserved.
 Please see `LICENSE` for further license instructions.
 
 ## Publications
-D. Knichel, A. Moradi, N. Müller, P. Sasdrich (2021): "Automated Generation of Masked Hardware" https://eprint.iacr.org/2021/
+D. Knichel, A. Moradi, N. Müller, P. Sasdrich (2021): "Automated Generation of Masked Hardware" https://eprint.iacr.org/2021/569/

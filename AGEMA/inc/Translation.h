@@ -2,7 +2,7 @@
  * -----------------------------------------------------------------
  * COMPANY : Ruhr University Bochum
  * AUTHOR  : Amir Moradi (amir.moradi@rub.de)
- * DOCUMENT: https://eprint.iacr.org/2021/
+ * DOCUMENT: https://eprint.iacr.org/2021/569/
  * -----------------------------------------------------------------
  *
  * Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Müller, Pascal Sasdrich
