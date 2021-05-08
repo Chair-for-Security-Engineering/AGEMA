@@ -74,7 +74,6 @@ int main(int argc, char *argv[])
 			printf("\n");
 			printf("-sc/-scheme <x>  : HPC1      -> Hardware Private Circuit\n");
 			printf("                 : HPC2      -> Hardware Private Circuit II\n");
-			printf("                 : HPC3LL    -> Hardware Private Circuit III with Low Latency\n");
 			printf("                 : GHPC      -> Generic Hardware Private Circuit\n");
 			printf("                 : GHPCLL    -> Generic Hardware Private Circuit with Low Latency\n");
 			printf("\n");
@@ -156,7 +155,6 @@ int main(int argc, char *argv[])
 
 				if (strcmp(Scheme, "HPC1") &&
 					strcmp(Scheme, "HPC2") &&
-					strcmp(Scheme, "HPC3LL") &&
 					strcmp(Scheme, "GHPC") &&
 					strcmp(Scheme, "GHPCLL"))
 				{
