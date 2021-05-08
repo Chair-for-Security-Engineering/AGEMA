@@ -335,54 +335,6 @@ SCAGate
 1 c d+1
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%% HPC3LL cells %%%%%%%%%%%%%%%%%%%%%%%%
-
-Library
-HPC3LL
-
-SCAGate
-1
-1 and_HPC3LL
-4 a d+1 b d+1 clk 1 r (d+1)*d
-1 c d+1
-
-SCAGate
-1
-1 nand_HPC3LL
-4 a d+1 b d+1 clk 1 r (d+1)*d
-1 c d+1
-
-SCAGate
-1
-1 or_HPC3LL
-4 a d+1 b d+1 clk 1 r (d+1)*d
-1 c d+1
-
-SCAGate
-1
-1 nor_HPC3LL
-4 a d+1 b d+1 clk 1 r (d+1)*d
-1 c d+1
-
-SCAGate
-0
-1 xor_HPC3LL
-2 a d+1 b d+1
-1 c d+1
-
-SCAGate
-0
-1 xnor_HPC3LL
-2 a d+1 b d+1
-1 c d+1
-
-SCAGate
-1
-1 mux2_HPC3LL
-5 s d+1 b d+1 a d+1 clk 1 r (d+1)*d
-1 c d+1
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%% GHPC cells %%%%%%%%%%%%%%%%%%%%%%%%%%
 % l : low latency
 
