@@ -37,17 +37,11 @@ architecture Behavioral of GHPC_Gadget_0 is
 begin
 
 	GEN_in: for I in 0 to in_size-1 generate
-           GEN_pp: if (pipeline /= 0) generate
 		reg_ins1: entity work.reg
 		Port map(
 			clk	=> clk,
 			D	=> in1(I),
 			Q	=> in1_reg(I));
-           end generate;
-
-           GEN_npp: if (pipeline = 0) generate
-		in1_reg(I) <= in1(I);
-           end generate;
 	end generate;	
 
 	--===============================
@@ -66,7 +60,6 @@ begin
 
 	GEN_out: for X in 0 to out_size-1 generate
            GEN_normal: if (low_latency = 0) generate
-              GEN_pp: if (pipeline /= 0) generate
 	         reg_out0_ins1: entity work.reg
 		   Port map(
 		      clk => clk,
@@ -78,11 +71,6 @@ begin
 	             clk => clk,
 	             D	 => out0_mid(X),
 	             Q	 => out0(X));
-              end generate;
-
-              GEN_npp: if (pipeline = 0) generate
-	  	out0(X) <= r(X);
-              end generate;
            end generate;
 
    	   GEN_LL: if (low_latency /= 0) generate

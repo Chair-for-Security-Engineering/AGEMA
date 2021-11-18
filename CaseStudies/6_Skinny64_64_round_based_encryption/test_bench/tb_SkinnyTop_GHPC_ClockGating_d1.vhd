@@ -4,13 +4,13 @@ USE ieee.std_logic_1164.ALL;
 USE ieee.numeric_std.ALL;
 USE ieee.math_real.ALL;
 
-ENTITY tb_CRAFT_HPC2_ClockGating_d3 IS
-END tb_CRAFT_HPC2_ClockGating_d3;
+ENTITY tb_SkinnyTop_GHPC_ClockGating_d1 IS
+END tb_SkinnyTop_GHPC_ClockGating_d1;
  
-ARCHITECTURE behavior OF tb_CRAFT_HPC2_ClockGating_d3 IS 
+ARCHITECTURE behavior OF tb_SkinnyTop_GHPC_ClockGating_d1 IS 
  
-	constant fresh_size   : integer := 1536;
-	constant AddedLatency : integer := 8;
+	constant fresh_size   : integer := 64;
+	constant AddedLatency : integer := 4;
 
 
    --Inputs
@@ -20,30 +20,20 @@ ARCHITECTURE behavior OF tb_CRAFT_HPC2_ClockGating_d3 IS
    signal rst : std_logic := '0';
    signal Plaintext_s0 : std_logic_vector(63 downto 0) := (others => '0');
    signal Plaintext_s1 : std_logic_vector(63 downto 0) := (others => '0');
-   signal Plaintext_s2 : std_logic_vector(63 downto 0) := (others => '0');
-   signal Plaintext_s3 : std_logic_vector(63 downto 0) := (others => '0');
-   signal Key_s0 : std_logic_vector(127 downto 0) := (others => '0');
-   signal Key_s1 : std_logic_vector(127 downto 0) := (others => '0');
-   signal Key_s2 : std_logic_vector(127 downto 0) := (others => '0');
-   signal Key_s3 : std_logic_vector(127 downto 0) := (others => '0');
+   signal Key_s0 : std_logic_vector(63 downto 0) := (others => '0');
+   signal Key_s1 : std_logic_vector(63 downto 0) := (others => '0');
 	
    signal Plaintext : std_logic_vector(63 downto 0) := (others => '0');
-   signal Key : std_logic_vector(127 downto 0) := (others => '0');
+   signal Key : std_logic_vector(63 downto 0) := (others => '0');
 
  	--Outputs
    signal Ciphertext_s0 : std_logic_vector(63 downto 0);
    signal Ciphertext_s1 : std_logic_vector(63 downto 0);
-   signal Ciphertext_s2 : std_logic_vector(63 downto 0);
-   signal Ciphertext_s3 : std_logic_vector(63 downto 0);
    signal Fresh     		: std_logic_vector(8*fresh_byte_size-1 downto 0) := (others => '0');
 	signal Synch         : std_logic;
 
-   signal Mask_P1 : std_logic_vector(63 downto 0) := (others => '0');
-   signal Mask_P2 : std_logic_vector(63 downto 0) := (others => '0');
-   signal Mask_P3 : std_logic_vector(63 downto 0) := (others => '0');
-   signal Mask_K1 : std_logic_vector(127 downto 0) := (others => '0');
-   signal Mask_K2 : std_logic_vector(127 downto 0) := (others => '0');
-   signal Mask_K3 : std_logic_vector(127 downto 0) := (others => '0');
+   signal Mask_P : std_logic_vector(63 downto 0) := (others => '0');
+   signal Mask_K : std_logic_vector(63 downto 0) := (others => '0');
 
 
    signal Ciphertext : std_logic_vector(63 downto 0);
@@ -52,7 +42,7 @@ ARCHITECTURE behavior OF tb_CRAFT_HPC2_ClockGating_d3 IS
    -- Clock period definitions
    constant clk_period : time := 10 ns;
 
-    constant mask_byte_size : integer := 8*3+16*3;
+    constant mask_byte_size : integer := 8+8;
  
     type INT_ARRAY  is array (integer range <>) of integer;
     type REAL_ARRAY is array (integer range <>) of real;
@@ -63,7 +53,8 @@ ARCHITECTURE behavior OF tb_CRAFT_HPC2_ClockGating_d3 IS
     
     signal rr_fresh: INT_ARRAY (fresh_byte_size-1 downto 0);
     signal mm_fresh: BYTE_ARRAY(fresh_byte_size-1 downto 0);
-    
+
+
 BEGIN
  
     maskgen: process
@@ -107,49 +98,35 @@ BEGIN
     
 	 gen_2:
     for i in 0 to 7 GENERATE
-        Mask_P1(8*(i+1)-1 downto 8*i) <= mm(8*0+i);
-        Mask_P2(8*(i+1)-1 downto 8*i) <= mm(8*1+i);
-        Mask_P3(8*(i+1)-1 downto 8*i) <= mm(8*2+i);
+        Mask_P(8*(i+1)-1 downto 8*i) <= mm(i);
     end GENERATE;
 
 	 gen_3:
-    for i in 0 to 15 GENERATE
-        Mask_K1(8*(i+1)-1 downto 8*i) <= mm(8*3+i);
-        Mask_K2(8*(i+1)-1 downto 8*i) <= mm(8*3+16+i);
-        Mask_K3(8*(i+1)-1 downto 8*i) <= mm(8*3+16*2+i);
+    for i in 0 to 7 GENERATE
+        Mask_K(8*(i+1)-1 downto 8*i) <= mm(8+i);
     end GENERATE;
  
-   uut: entity work.CRAFT_HPC2_ClockGating_d3 PORT MAP (
+   uut: entity work.SkinnyTop_GHPC_ClockGating_d1 PORT MAP (
           clk => clk,
           rst => rst,
           Plaintext_s0 => Plaintext_s0,
           Plaintext_s1 => Plaintext_s1,
-          Plaintext_s2 => Plaintext_s2,
-          Plaintext_s3 => Plaintext_s3,
           Key_s0 => Key_s0,
           Key_s1 => Key_s1,
-          Key_s2 => Key_s2,
-          Key_s3 => Key_s3,
 			 Fresh  => Fresh(fresh_size-1 downto 0),
 			 Synch  => Synch,
           Ciphertext_s0 => Ciphertext_s0,
           Ciphertext_s1 => Ciphertext_s1,
-          Ciphertext_s2 => Ciphertext_s2,
-          Ciphertext_s3 => Ciphertext_s3,
           done => done
         );
 
-	Plaintext_s0 <= Plaintext XOR Mask_P1 XOR Mask_P2 XOR Mask_P3;
-	Plaintext_s1 <= Mask_P1;
-	Plaintext_s2 <= Mask_P2;
-	Plaintext_s3 <= Mask_P3;
+	Plaintext_s0 <= Plaintext XOR Mask_P;
+	Plaintext_s1 <= Mask_P;
 	
-	Key_s0 <= Key XOR Mask_K1 XOR Mask_K2 XOR Mask_K3;
-	Key_s1 <= Mask_K1;
-	Key_s2 <= Mask_K2;
-	Key_s3 <= Mask_K3;
+	Key_s0 <= Key XOR Mask_K;
+	Key_s1 <= Mask_K;
 
-   Ciphertext <= Ciphertext_s0 XOR Ciphertext_s1 XOR Ciphertext_s2 XOR Ciphertext_s3;
+   Ciphertext <= Ciphertext_s0 XOR Ciphertext_s1;
 
    -- Clock process definitions
    clk_process :process
@@ -167,19 +144,21 @@ BEGIN
       -- hold rst state for 100 ns.
       wait for clk_period;	
 
-		rst	<= '1';
-		Plaintext 	<= x"0123456789ABCDEF";
-		Key 			<= x"18F4EEBDFCED7841D9E0E38CFE6A9405";
+		rst			<= '1';
+		Plaintext 	<= x"06034f957724d19d";
+		Key 			<= x"f5269826fc681238";
       
 		wait for clk_period*(AddedLatency + 1);
 	
-		Plaintext 	<= (others => '0');
-		rst	<= '0';
+		Plaintext 	<= x"0000000000000000";
+		Key 			<= x"0000000000000000";
+		
+		rst			<= '0';
 
 		wait until rising_edge(clk) and (done = '1'); 
 		wait for clk_period*(AddedLatency);
 		
-		if (Ciphertext = x"614D03B82A8A2817") then
+		if (Ciphertext = x"bb39dfb2429b8ac7") then
 			report "---------- Passed ----------";
 		else
 			report "---------- Failed ----------";

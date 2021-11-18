@@ -1,7 +1,7 @@
 -------------------------------------------------------------------
 -- COMPANY : Ruhr University Bochum
 -- AUTHOR  : Amir Moradi (amir.moradi@rub.de) & David Knichel (david.knichel@rub.de)
--- DOCUMENT: https:--eprint.iacr.org/2021/569/
+-- DOCUMENT: https://eprint.iacr.org/2021/569/
 -- -----------------------------------------------------------------
 --
 --
@@ -80,16 +80,9 @@ begin
 		Z(I)(I) <= mul_s2_out(I);
 		
 		--pipeline
-		gen_pipe_i_1 : if (pipeline /= 0) generate
-			mul_pipe_s1 : reg port map (clk => clk, d => mul(I), q => mul_s1_out(I));
-			mul_pipe_s2 : reg port map (clk => clk, d => mul_s1_out(I), q => mul_s2_out(I));
-			a_i : reg port map(clk => clk, d => a(I), q => a_reg(I));
-		end generate gen_pipe_i_1;
-
-		gen_pipe_i_0 : if (pipeline = 0) generate
-			mul_s2_out(I) <= mul(I);
-			a_reg(I) <= a(I);
-		end generate gen_pipe_i_0;
+		mul_pipe_s1 : reg port map (clk => clk, d => mul(I), q => mul_s1_out(I));
+		mul_pipe_s2 : reg port map (clk => clk, d => mul_s1_out(I), q => mul_s2_out(I));
+		a_i : reg port map(clk => clk, d => a(I), q => a_reg(I));
 
 		gen_j : for J in 0 to security_order generate
 			gen_i_neq_j : if (I /= J) generate
@@ -105,13 +98,8 @@ begin
 				p_1_reg: reg port map (clk => clk, d => p_1_in(I)(J), q => p_1_out(I)(J));
 
 				-- pipeline
-				gen_pipe_i_j_1 : if (pipeline /= 0) generate
-					p_0_pipe : reg port map (clk => clk, d => p_0_out(I)(J), q => p_0_pipe_out (I)(J));
-				end generate gen_pipe_i_j_1;
+				p_0_pipe : reg port map (clk => clk, d => p_0_out(I)(J), q => p_0_pipe_out (I)(J));
 
-				gen_pipe_i_j_0 : if (pipeline = 0) generate
-					p_0_pipe_out (I)(J) <= p_0_out(I)(J);
-				end generate gen_pipe_i_j_0;
 			end generate gen_i_neq_j;
 		end generate gen_j;
 	end generate gen_i;

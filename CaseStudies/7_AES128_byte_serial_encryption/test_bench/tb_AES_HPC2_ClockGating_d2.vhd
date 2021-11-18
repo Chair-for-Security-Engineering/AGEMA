@@ -47,7 +47,7 @@ ARCHITECTURE behavior OF tb_AES_HPC2_ClockGating_d2 IS
    -- Clock period definitions
    constant clk_period : time := 10 ns;
 
-    constant mask_byte_size : integer := fresh_byte_size+16*2+16*2;
+    constant mask_byte_size : integer := 16*2+16*2;
  
     type INT_ARRAY  is array (integer range <>) of integer;
     type REAL_ARRAY is array (integer range <>) of real;
@@ -55,6 +55,9 @@ ARCHITECTURE behavior OF tb_AES_HPC2_ClockGating_d2 IS
     
     signal rr: INT_ARRAY (mask_byte_size-1 downto 0);
     signal mm: BYTE_ARRAY(mask_byte_size-1 downto 0);
+    
+    signal rr_fresh: INT_ARRAY (fresh_byte_size-1 downto 0);
+    signal mm_fresh: BYTE_ARRAY(fresh_byte_size-1 downto 0);
     
 BEGIN
  
@@ -70,26 +73,43 @@ BEGIN
             mm(i) <= std_logic_vector(to_unsigned(rr(i), mm(i)'length));
         end loop;
 		  
-        wait for clk_period;
+		  wait until rising_edge(clk) and (Synch = '1'); 
+		  
+    end process;
+
+
+   fresh_maskgen: process
+         variable seed1, seed2: positive;        -- seed values for random generator
+         variable rand: REAL_ARRAY(fresh_byte_size-1 downto 0); -- random real-number value in range 0 to 1.0  
+         variable range_of_rand : real := 256.0; -- the range of random values created will be 0 to +1000.
+    begin
+        
+        FOR i in 0 to fresh_byte_size-1 loop
+            uniform(seed1, seed2, rand(i));   -- generate random number
+            rr_fresh(i) <= integer(trunc(rand(i)*range_of_rand));  -- rescale to 0..1000, convert integer part 
+            mm_fresh(i) <= std_logic_vector(to_unsigned(rr_fresh(i), mm_fresh(i)'length));
+        end loop;
+		  
+		  wait for clk_period;
     end process;
 
     ---------
 
 	 gen_1:
     FOR i in 0 to fresh_byte_size-1 GENERATE
-        Fresh(8*(i+1)-1 downto 8*i) <= mm(i);
+        Fresh(8*(i+1)-1 downto 8*i) <= mm_fresh(i);
     end GENERATE;
     
 	 gen_2:
     for i in 0 to 15 GENERATE
-        Mask_P1(8*(i+1)-1 downto 8*i) <= mm(fresh_byte_size+16*0+i);
-        Mask_P2(8*(i+1)-1 downto 8*i) <= mm(fresh_byte_size+16*1+i);
+        Mask_P1(8*(i+1)-1 downto 8*i) <= mm(16*0+i);
+        Mask_P2(8*(i+1)-1 downto 8*i) <= mm(16*1+i);
     end GENERATE;
 
 	 gen_3:
     for i in 0 to 15 GENERATE
-        Mask_K1(8*(i+1)-1 downto 8*i) <= mm(fresh_byte_size+16*2+i);
-        Mask_K2(8*(i+1)-1 downto 8*i) <= mm(fresh_byte_size+16*3+i);
+        Mask_K1(8*(i+1)-1 downto 8*i) <= mm(16*2+i);
+        Mask_K2(8*(i+1)-1 downto 8*i) <= mm(16*3+i);
     end GENERATE;
  
    uut: entity work.AES_HPC2_ClockGating_d2 PORT MAP (

@@ -1,7 +1,7 @@
 -------------------------------------------------------------------
 -- COMPANY : Ruhr University Bochum
 -- AUTHOR  : Amir Moradi (amir.moradi@rub.de)
--- DOCUMENT: https:--eprint.iacr.org/2021/569/
+-- DOCUMENT: https://eprint.iacr.org/2021/569/
 -- -----------------------------------------------------------------
 --
 --
@@ -62,11 +62,10 @@ begin
 	BEGIN
 		IF (clk = '0') THEN
 			LatchedEnable <= EnableClk;
+			Synch         <= ShiftRegister(NumberOfStages);
 		END IF;
 	END PROCESS;		
 
 	GatedClk <= clk AND LatchedEnable;
-	
-	Synch <= (not rst) AND ShiftRegister(1);
 
 end Behavioral;
