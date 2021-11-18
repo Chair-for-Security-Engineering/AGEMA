@@ -168,7 +168,7 @@ In case you get an error message similar to:
 please export the `/lib` directory to your linker library path, e.g., using `export LD_LIBRARY_PATH=``pwd``/lib` before executing the binary.
 
 ## Licensing
-Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Müller, Pascal Sasdrich
+Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai MÃ¼ller, Pascal Sasdrich
 
 All rights reserved.
 
