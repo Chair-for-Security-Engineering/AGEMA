@@ -33,7 +33,7 @@ Please follow the instructions below to build the AGEMA framework:
 7. Copy (replace) the ABC library `libabc.so` to `/lib/`
 8. Clone and build the [CUDD](https://github.com/ivmai/cudd) library.
 9. Copy (replace) the CUDD library `libcudd.so` to `/lib/`
-10. Clone and build the [Sylvan](https://github.com/trolando/sylvan) BDD library.
+10. Clone and build the [Sylvan](https://github.com/trolando/sylvan) BDD library. Make sure you check out 5e9da9782885f6215f6b509ac250212df30aaf70.
 12. Copy (replace) the Sylvan library `libsylvan.so` to `/lib/`
 13. Copy (replace) the Sylvan header files to `/inc/sylvan/`
 14. run `make clean` and then `make release` to build AGEMA
