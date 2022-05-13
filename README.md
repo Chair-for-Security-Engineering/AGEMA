@@ -16,6 +16,7 @@ It supports the following processing methods:
 It also supports different masking scheme with respect to the used gadgets:
 - HPC1
 - HPC2
+- HPC3
 - GHPC
 - GHPCLL
 
