@@ -19,6 +19,7 @@ It also supports different masking scheme with respect to the used gadgets:
 - HPC3
 - GHPC
 - GHPCLL
+- COMAR
 
 For more information about their meaning and difference, please see the paper.
 
