@@ -2586,7 +2586,10 @@ void AddFreshtoSCACell(CircuitStruct* Circuit, LibraryStruct* Library, int CellI
 	int*    Buffer_Int;
 	int     NumberOfSharedFreshMasks;
 
-	NumberOfSharedFreshMasks = 0;
+	if (!strcmp(Scheme, "COMAR"))
+		NumberOfSharedFreshMasks = 6;
+	else
+		NumberOfSharedFreshMasks = 0;
 
 	if (Circuit->NumberOfFreshMasks < NumberOfSharedFreshMasks)
 		for (i = 0;i < NumberOfSharedFreshMasks;i++)
@@ -4375,6 +4378,28 @@ void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char Securit
 				free(PortNameList[TempIndex]);
 
 			fprintf(OutputFile, " ) ;");
+
+			if (!strcmp(Scheme, "COMAR"))
+			{
+				if (Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs - 1]]->FreshMask == 1)
+				{
+					TempType = 0;
+					for (InputIndex = 0;InputIndex < Circuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
+					{
+						if ((Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[InputIndex]]->FreshMask != 1) &&
+							(strcmp(Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[InputIndex]]->Attribute, "clock")) &&
+							(strcmp(Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[InputIndex]]->Attribute, "reset")))
+						{
+
+							TempCellIndex = Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[InputIndex]]->Output;
+							TempType |= GetType(TempCellIndex, Library, Circuit);
+						}
+					}
+
+					fprintf(OutputFile, " /* %s_type_%d */", Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Cases[0], TempType);
+				}
+			}
+
 			if (WriteDepths)
 				fprintf(OutputFile, " /* Depth: %d */\n", Circuit->Cells[CellIndex]->Depth);
 			else

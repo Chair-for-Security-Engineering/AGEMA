@@ -77,6 +77,7 @@ int main(int argc, char *argv[])
 			printf("                 : HPC3      -> Hardware Private Circuit III\n");
 			printf("                 : GHPC      -> Generic Hardware Private Circuit\n");
 			printf("                 : GHPCLL    -> Generic Hardware Private Circuit with Low Latency\n");
+			printf("                 : COMAR     -> Composable Gadgets with Reused Fresh Masks\n");
 			printf("\n");
 			printf("\n");
 			printf("options:\n");
@@ -158,7 +159,8 @@ int main(int argc, char *argv[])
 					strcmp(Scheme, "HPC2") &&
 					strcmp(Scheme, "HPC3") &&
 					strcmp(Scheme, "GHPC") &&
-					strcmp(Scheme, "GHPCLL"))
+					strcmp(Scheme, "GHPCLL") &&
+					strcmp(Scheme, "COMAR"))
 				{
 					printf("scheme \"%s\" not known\n", Scheme);
 					return 1;
@@ -257,10 +259,10 @@ int main(int argc, char *argv[])
 
 	//--------------------------------------
 
-	if (((!strcmp(Scheme, "GHPC")) || (!strcmp(Scheme, "GHPCLL"))) &&
+	if (((!strcmp(Scheme, "GHPC")) || (!strcmp(Scheme, "GHPCLL")) || (!strcmp(Scheme, "COMAR"))) &&
 		(SecurityOrder > 1))
 	{
-		printf("schemes GHPC and GHPCLL support only first-order security\n");
+		printf("schemes GHPC, GHPCLL, and COMAR support only first-order security\n");
 		return 1;
 	}
 
