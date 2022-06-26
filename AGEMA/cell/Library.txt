@@ -474,7 +474,7 @@ SCAGate
 1 c d+1
 
 SCAGate
-2
+4
 1 mux2_COMAR
 5 s d+1 b d+1 a d+1 clk 1 r 6
 1 c d+1
