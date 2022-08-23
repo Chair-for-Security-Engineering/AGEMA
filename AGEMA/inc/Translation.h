@@ -4188,6 +4188,35 @@ int WriteCustomizedFile(char* InputVerilogFileName, LibraryStruct* Library, Circ
 	return 0;
 }
 
+int GetType(int CellIndex, LibraryStruct* Library, CircuitStruct* Circuit)
+{
+	int   InputIndex;
+	int   TempType;
+
+	if (CellIndex == -1) // it is a primary input
+		TempType = 1;
+	else
+	{
+		if (Library->CellTypes[Circuit->Cells[CellIndex]->Type]->GateOrReg == CellType_Reg)
+			TempType = 2;
+		else
+		{
+			if (Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs - 1]]->FreshMask == 1)
+				TempType = 1;
+			else
+			{
+				TempType = 0;
+				for (InputIndex = 0;InputIndex < Circuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
+					if ((Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[InputIndex]]->FreshMask != 1) &&
+						(strcmp(Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[InputIndex]]->Attribute, "clock")) &&
+						(strcmp(Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[InputIndex]]->Attribute, "reset")))
+						TempType |= GetType(Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[InputIndex]]->Output, Library, Circuit);
+			}
+		}
+	}
+
+	return(TempType);
+}
 
 void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char SecurityOrder, char KeepOriginalNames, char WriteDepths,
 	char MakePipeline, LibraryStruct* Library, CircuitStruct* Circuit)
@@ -4207,6 +4236,8 @@ void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char Securit
 	int    NumberOfPortNameList;
 	int	   MaxNumberOfPortNameList;
 	int	   TempIndex;
+	int    TempType;
+	int    TempCellIndex;
 
 	MaxNumberOfPortNameList = Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs;
 	if (MaxNumberOfPortNameList < Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfOutputs)
