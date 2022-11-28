@@ -1042,15 +1042,21 @@ void convertANF(std::string sourcePath, std::string topmodule, std::string desti
     // Create new folder
     //std::string directory_path = sourcePath.substr(0, sourcePath.find_last_of("/")) + "/" + topmodule + "_ANF";
     //std::filesystem::create_directory(directory_path);
-    std::string directory_path = sourcePath.substr(0, sourcePath.find_last_of("/"));
+
+    std::string directory_path;
+
+    if (sourcePath.find_last_of("/") != string::npos)
+        directory_path = sourcePath.substr(0, sourcePath.find_last_of("/")) + "/";
+    else
+        directory_path = "";
 
     // Output file stream to write verilog circuit
-    destinationPath = directory_path + "/" + topmodule + "_ANF.v";
+    destinationPath = directory_path + topmodule + "_ANF.v";
     std::ofstream netlist(destinationPath);
 
     std::string destinationPath2, destinationPath3;
-    destinationPath2 = directory_path + "/" + topmodule + "_GHPC_Step1.vhd";
-    destinationPath3 = directory_path + "/" + topmodule + "_GHPC_Gadget.vhd";
+    destinationPath2 = directory_path + topmodule + "_GHPC_Step1.vhd";
+    destinationPath3 = directory_path + topmodule + "_GHPC_Gadget.vhd";
 
     // Output file stream to write vhdl ghpc modules
     std::ofstream netlist2(destinationPath2);
