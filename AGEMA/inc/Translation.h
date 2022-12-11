@@ -144,120 +144,6 @@ struct CircuitStruct {
 	int			 NumberOfFreshMasks = 0;
 };
 
-struct MemoryFile {
-	char*	       FileName = NULL;
-	unsigned char* Buffer = NULL;
-	int 	       eof = 1;
-	int	           size = 0;
-	int            current = 0;
-};
-
-//***************************************************************************************
-
-int MemoryFile_Open(char* FileName, MemoryFile* &MFile)
-{
-	FILE* F;
-
-	MFile = (MemoryFile*)malloc(sizeof(MemoryFile));
-
-	MFile->FileName = NULL;
-	MFile->Buffer = NULL;
-	MFile->eof = 1;
-	MFile->size = 0;
-	MFile->current = 0;
-
-	MFile->FileName = (char*)malloc(strlen(FileName) + 1);
-	strcpy(MFile->FileName, FileName);
-
-	F = fopen(FileName, "rb");
-
-	if (F == NULL)
-		return 1;
-
-	fseek(F, 0, SEEK_END);
-	MFile->size = ftell(F);
-	fseek(F, 0, SEEK_SET);
-
-	MFile->Buffer = (unsigned char*)malloc(MFile->size * sizeof(unsigned char));
-	if (fread(MFile->Buffer, 1, MFile->size, F) != MFile->size)
-	{
-		fclose(F);
-		free(MFile->FileName);
-		free(MFile->Buffer);
-		MFile->FileName = NULL;
-		MFile->Buffer = NULL;
-		MFile->eof = 1;
-		MFile->size = 0;
-		MFile->current = 0;
-		return 1;
-	}
-
-	fclose(F);
-	MFile->current = 0;
-	MFile->eof = (MFile->current == MFile->size);
- 	return 0;
-}
-
-//***************************************************************************************
-
-int MemoryFile_Copy(MemoryFile* SourceFile, MemoryFile* &MFile)
-{
-	MFile = (MemoryFile*)malloc(sizeof(MemoryFile));
-
-	MFile->FileName = (char*)malloc(strlen(SourceFile->FileName) + 1);
-	strcpy(MFile->FileName, SourceFile->FileName);
-	MFile->size = SourceFile->size;
-	MFile->Buffer = (unsigned char*)malloc(MFile->size * sizeof(unsigned char));
-	memcpy(MFile->Buffer, SourceFile->Buffer, MFile->size * sizeof(unsigned char));
-	MFile->current = 0;
-	MFile->eof = (MFile->current == MFile->size);
- 	return 0;
-}
-
-//***************************************************************************************
-
-int MemoryFile_eof(MemoryFile* MFile)
-{
-	if (MFile->Buffer == NULL)
-	{
-		MFile->eof = 1;
-		return 1;
-	}
-
-	MFile->eof = (MFile->current == MFile->size);
-	return(MFile->eof);
-}
-
-//***************************************************************************************
-
-int MemoryFile_getc(MemoryFile* MFile)
-{
-	int ch = EOF;
-
-	if ((MFile->Buffer != NULL) &&
-		(MFile->current < MFile->size))
-	{
-		ch = MFile->Buffer[MFile->current];
-		MFile->current++;
-		MFile->eof = (MFile->current == MFile->size);
-	}
-
-	return(ch);
-}
-
-//***************************************************************************************
-
-int MemoryFile_Close(MemoryFile* &MFile)
-{
-	if (MFile != NULL)
-	{
-		free(MFile->FileName);
-		free(MFile->Buffer);
-		free(MFile);
-		MFile = NULL;
-	}
-}
-
 //***************************************************************************************
 
 int StrReplaceChar(char *Str, char ch_source, char ch_destination)
@@ -336,7 +222,7 @@ void ReadNonCommentFromFile(FILE* FileHeader, char* Str, const char* CommentSynt
 
 //***************************************************************************************
 
-void MemoryFile_ReadaWord(MemoryFile* MFile, char* Buffer, char* Attribute)
+void fReadaWord(FILE* FileHeader, char* Buffer, char* Attribute)
 {
     //reset Buffer
 	memset(Buffer, 0, 10); //Max_Name_Length
@@ -350,14 +236,14 @@ void MemoryFile_ReadaWord(MemoryFile* MFile, char* Buffer, char* Attribute)
     if (Attribute)
         Attribute[0] = 0;
 
-    while ((!MemoryFile_eof(MFile)) || Lastch)
+    while ((!feof(FileHeader)) || Lastch)
     {
         if (Lastch)
             ch = Lastch;
         else
-            ch = MemoryFile_getc(MFile);
+            ch = fgetc(FileHeader);
 
-        if ((!MemoryFile_eof(MFile)) || Lastch)
+        if ((!feof(FileHeader)) || Lastch)
         {
             Lastch = 0;
 
@@ -379,12 +265,12 @@ void MemoryFile_ReadaWord(MemoryFile* MFile, char* Buffer, char* Attribute)
 
                     if (ch == '(')
                     {
-                        ch = MemoryFile_getc(MFile);
+                        ch = fgetc(FileHeader);
                         if (ch == '*')
                         {
-                            while (!MemoryFile_eof(MFile))
+                            while (!feof(FileHeader))
                             {
-                                ch = MemoryFile_getc(MFile);
+                                ch = fgetc(FileHeader);
                                 if ((Buffer[i] == '*') && (ch == ')'))
                                     break;
                                 else
@@ -395,7 +281,7 @@ void MemoryFile_ReadaWord(MemoryFile* MFile, char* Buffer, char* Attribute)
                                 }
                             }
 
-                            if (!MemoryFile_eof(MFile))
+                            if (!feof(FileHeader))
                             {
                                 i--;
                                 j--;
@@ -417,9 +303,9 @@ void MemoryFile_ReadaWord(MemoryFile* MFile, char* Buffer, char* Attribute)
                 {
                     i--;
 
-                    while (!MemoryFile_eof(MFile))
+                    while (!feof(FileHeader))
                     {
-                        ch = MemoryFile_getc(MFile);
+                        ch = fgetc(FileHeader);
                         if ((ch == '\n') || (ch == '\r'))
                             break;
                     }
@@ -431,9 +317,9 @@ void MemoryFile_ReadaWord(MemoryFile* MFile, char* Buffer, char* Attribute)
                 {
                     i--;
 
-                    while (!MemoryFile_eof(MFile))
+                    while (!feof(FileHeader))
                     {
-                        ch = MemoryFile_getc(MFile);
+                        ch = fgetc(FileHeader);
                         if ((Buffer[i] == '*') && (ch == '/'))
                             break;
                         else
@@ -444,9 +330,9 @@ void MemoryFile_ReadaWord(MemoryFile* MFile, char* Buffer, char* Attribute)
                 {
                     i--;
 
-                    while (!MemoryFile_eof(MFile))
+                    while (!feof(FileHeader))
                     {
-                        ch = MemoryFile_getc(MFile);
+                        ch = fgetc(FileHeader);
                         if ((Buffer[i] == '*') && (ch == ')'))
                             break;
                         else
@@ -457,7 +343,7 @@ void MemoryFile_ReadaWord(MemoryFile* MFile, char* Buffer, char* Attribute)
                         }
                     }
 
-                    if (!MemoryFile_eof(MFile))
+                    if (!feof(FileHeader))
                         j--;
                 }
             }
@@ -1448,11 +1334,10 @@ int AddSignalToConstants(CircuitStruct* Circuit, int SignalIndex)
 //***************************************************************************************
 
 int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
-	LibraryStruct* Library, CircuitStruct* Circuit, char* AttributeKeyword,
-	char print = 1, MemoryFile*	MainDesignFile = NULL,
+	LibraryStruct* Library, CircuitStruct* Circuit, char* AttributeKeyword,	char print = 1,
 	int NumberOfSignalsOffset = 0, int NumberOfCellsOffset = 0)
 {
-	MemoryFile*		DesignFile = NULL;
+	FILE*			DesignFile;
 	char			finished;
 	char			ReadSignalsFinished;
 	int				CellTypeIndex;
@@ -1593,12 +1478,9 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	//---------------------------------------------------------------------------------------------//
 	//------------------- reading the Circuit->Signals from the design file --------------------------------//
 
-	if (MainDesignFile == NULL)
-		MemoryFile_Open(InputVerilogFileName, DesignFile);
-	else
-		MemoryFile_Copy(MainDesignFile, DesignFile);
+	DesignFile = fopen(InputVerilogFileName, "rb");
 
-	if (DesignFile->Buffer == NULL)
+	if (DesignFile == NULL)
 	{
 		printf("\ndesign file \"%s\" not found\n", InputVerilogFileName);
 		free(Str1);
@@ -1613,28 +1495,28 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 
 	do {
 		do {
-			MemoryFile_ReadaWord(DesignFile, Str1, NULL);
-		} while ((!MemoryFile_eof(DesignFile)) && strcmp(Str1, "module"));
+			fReadaWord(DesignFile, Str1, NULL);
+		} while ((!feof(DesignFile)) && strcmp(Str1, "module"));
 
-		if (!MemoryFile_eof(DesignFile))
+		if (!feof(DesignFile))
 		{
-			MemoryFile_ReadaWord(DesignFile, Str1, NULL);
+			fReadaWord(DesignFile, Str1, NULL);
 			if (strcmp(Str1, MainModuleName))
 			{
 				do {
-					MemoryFile_ReadaWord(DesignFile, Str1, NULL);
-				} while ((!MemoryFile_eof(DesignFile)) && strcmp(Str1, "endmodule"));
+					fReadaWord(DesignFile, Str1, NULL);
+				} while ((!feof(DesignFile)) && strcmp(Str1, "endmodule"));
 			}
 			else
 			{
 				do {
-					MemoryFile_ReadaWord(DesignFile, Str1, NULL);
+					fReadaWord(DesignFile, Str1, NULL);
 					ch = Str1[strlen(Str1) - 1];
-				} while ((ch != ';') && (!MemoryFile_eof(DesignFile)));  // ignoring the entire list of input/output ports
+				} while ((ch != ';') && (!feof(DesignFile)));  // ignoring the entire list of input/output ports
 
-				while ((!ReadSignalsFinished) && (!MemoryFile_eof(DesignFile)))
+				while ((!ReadSignalsFinished) && (!feof(DesignFile)))
 				{
-					MemoryFile_ReadaWord(DesignFile, Str1, AttributeText);
+					fReadaWord(DesignFile, Str1, AttributeText);
 
 					if ((!strcmp(Str1, "input")) || (!strcmp(Str1, "output")) || (!strcmp(Str1, "wire")))
 					{
@@ -1642,7 +1524,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 							ProcessAttribute(AttributeKeyword, AttributeText, NewAttributes, NumberOfNewAttributes))
 						{
 							printf("\nprocessing the attribute %s failed\n", AttributeText);
-							MemoryFile_Close(DesignFile);
+							fclose(DesignFile);
 							free(Str1);
 							free(Str2);
 							free(Phrase);
@@ -1656,7 +1538,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 						Index2 = -1;
 
 						do {
-							ch = MemoryFile_getc(DesignFile);
+							ch = fgetc(DesignFile);
 
 							if ((ch == '[') && (!i))
 							{
@@ -1719,7 +1601,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 											if (TempAttributeIndex < NumberOfInputAttributes)
 											{
 												printf("\ndouplicat attribute %s found for input %s\n", NewAttributes[NewAttributeIndex], Str2);
-												MemoryFile_Close(DesignFile);
+												fclose(DesignFile);
 												free(Str1);
 												free(Str2);
 												free(Phrase);
@@ -1735,7 +1617,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 												strcmp(NewAttributes[NewAttributeIndex], "constant"))
 											{
 												printf("\nattribute %s is not known for input %s\n", NewAttributes[NewAttributeIndex], Str2);
-												MemoryFile_Close(DesignFile);
+												fclose(DesignFile);
 												free(Str1);
 												free(Str2);
 												free(Phrase);
@@ -1765,7 +1647,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 										else
 										{
 											printf("\nattribute of input %s not given\n", Str2);
-											MemoryFile_Close(DesignFile);
+											fclose(DesignFile);
 											free(Str1);
 											free(Str2);
 											free(Phrase);
@@ -1810,7 +1692,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 								Str1[i++] = ch;
 								Str1[i] = 0;
 							}
-						} while ((ch != ';') && (!MemoryFile_eof(DesignFile)));
+						} while ((ch != ';') && (!feof(DesignFile)));
 					}
 					else
 						ReadSignalsFinished = 1;
@@ -1819,12 +1701,12 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 				//---------------------------------------------------------------------------------------------//
 				//------------------- reading the Circuit->Cells from the design file ----------------------------------//
 
-				if (!MemoryFile_eof(DesignFile))
+				if (!feof(DesignFile))
 				{
 					strcpy(Str2, Str1);
 
 					do {
-						MemoryFile_ReadaWord(DesignFile, Str1, NULL);
+						fReadaWord(DesignFile, Str1, NULL);
 						if (Str1[0] != '[')
 							strcat(Str2, " ");
 						strcat(Str2, Str1);
@@ -1851,7 +1733,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 												else
 												{
 													printf("\nbuffer cell is not defined in the library for \"assign\" statements\n");
-													MemoryFile_Close(DesignFile);
+													fclose(DesignFile);
 													free(Str1);
 													free(Str2);
 													free(Phrase);
@@ -1948,13 +1830,12 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 												SubCircuit.FreshMasks = NULL;
 												SubCircuit.NumberOfFreshMasks = 0;
 
-                                                if (ReadDesignFile(InputVerilogFileName, Str1, Library, &SubCircuit, NULL,
-                                                				   0, DesignFile,
+                                                if (ReadDesignFile(InputVerilogFileName, Str1, Library, &SubCircuit, NULL, 0,
                                                                    NumberOfSignalsOffset + Circuit->NumberOfSignals - Circuit->NumberOfConstants,
                                                                    NumberOfCellsOffset + Circuit->NumberOfCells))
                                                 {
 													printf("\ncell type or module \"%s\" not found\n", Str1);
-													MemoryFile_Close(DesignFile);
+													fclose(DesignFile);
 													free(Str1);
 													free(Str2);
 													free(Phrase);
@@ -2047,7 +1928,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
                                                                                 NumberOfInputPorts, NumberOfOutputPorts, IOPorts))
                                                 {
 													printf("\nIO port \"%s\" not found in cell type \"%s\"\n", Str1 + 1, Library->CellTypes[CellTypeIndex]->Cases[CaseIndex]);
-													MemoryFile_Close(DesignFile);
+													fclose(DesignFile);
 													free(Str1);
 													free(Str2);
 													free(Phrase);
@@ -2061,7 +1942,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 											else
 											{
 												printf("\nerror in reading the netlist, '.' is expected in %s\n", Str1);
-												MemoryFile_Close(DesignFile);
+												fclose(DesignFile);
 												free(Str1);
 												free(Str2);
 												free(Phrase);
@@ -2079,7 +1960,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 																		        NumberOfInputPorts, NumberOfOutputPorts, IOPorts, CurrentIO))
 											{
 												printf("\nsignal \"%s\" not found\n", Str1);
-												MemoryFile_Close(DesignFile);
+												fclose(DesignFile);
 												free(Str1);
 												free(Str2);
 												free(Phrase);
@@ -2116,7 +1997,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 										else
 										{
 											printf("\n= is placed in a wrong position\n");
-											MemoryFile_Close(DesignFile);
+											fclose(DesignFile);
 											free(Str1);
 											free(Str2);
 											free(Phrase);
@@ -2143,7 +2024,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
                                                                             NumberOfInputPorts, NumberOfOutputPorts, IOPorts))
                                             {
 												printf("\nIO port \"%s\" did not found in cell type \"%s\"\n", Str1 + 1, Library->CellTypes[CellTypeIndex]->Cases[0]);
-												MemoryFile_Close(DesignFile);
+												fclose(DesignFile);
 												free(Str1);
 												free(Str2);
 												free(Phrase);
@@ -2156,7 +2037,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 										else
 										{
 											printf("\nerror in reading the netlist, '.' is expected in %s\n", Str1);
-											MemoryFile_Close(DesignFile);
+											fclose(DesignFile);
 											free(Str1);
 											free(Str2);
 											free(Phrase);
@@ -2167,7 +2048,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 									else
 									{
 										printf("\n( is placed in a wrong position\n");
-										MemoryFile_Close(DesignFile);
+										fclose(DesignFile);
 										free(Str1);
 										free(Str2);
 										free(Phrase);
@@ -2193,7 +2074,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
                                                                             NumberOfInputPorts, NumberOfOutputPorts, IOPorts, CurrentIO))
                                         {
 											printf("\nsignal \"%s\" not found\n", Str1);
-											MemoryFile_Close(DesignFile);
+											fclose(DesignFile);
 											free(Str1);
 											free(Str2);
 											free(Phrase);
@@ -2209,7 +2090,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 									else
 									{
 										printf("\n) is placed in a wrong position\n");
-										MemoryFile_Close(DesignFile);
+										fclose(DesignFile);
 										free(Str1);
 										free(Str2);
 										free(Phrase);
@@ -2243,15 +2124,15 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 							Str2[0] = 0;
 						}
 
-					} while (strcmp(Str1, "endmodule") && (!MemoryFile_eof(DesignFile)));
+					} while (strcmp(Str1, "endmodule") && (!feof(DesignFile)));
 
 					finished = 1;
 				}
 			}
 		}
-	} while ((!MemoryFile_eof(DesignFile)) && (!finished));
+	} while ((!feof(DesignFile)) && (!finished));
 
-	MemoryFile_Close(DesignFile);
+	fclose(DesignFile);
 	free(Str1);
 	free(Str2);
 	free(Phrase);

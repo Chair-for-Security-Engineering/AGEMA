@@ -92,7 +92,7 @@ compile_ultra -no_autoungroup -no_boundary_optimization
 ungroup -all -flatten
 ```
 
-This generates a flattened netlist where the QN outputs of flip-flops are not used and can be processed by AGEMA.
+This generates a flattened netlist where the QN outputs of flip-flops are not used and can be processed by AGEMA. In the current version (as of 11 Dec 2022), the final netlist must not be flattened. Hence the command ```ungroup -all -flatten``` is not necessary.
 
 ### Yosys
 
