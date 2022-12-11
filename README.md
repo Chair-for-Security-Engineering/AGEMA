@@ -1,7 +1,7 @@
 # AGEMA
 Automated Generation of Masked Hardware
 
-This repository contains the source code (C++) and hardware implementations (HDL files) for the paper "Automated Generation of Masked Hardware".
+This repository contains the source code (C++) and hardware implementations (HDL files) for the paper "[Automated Generation of Masked Hardware](https://doi.org/10.46586/tches.v2022.i1.589-629)".
 
 ## Features
 AGEMA is a framework written in C++ which partially relies on Reduced Ordered Binary Decision Diagrams (ROBDDs) and ABC library.
@@ -177,4 +177,6 @@ All rights reserved.
 Please see `LICENSE` for further license instructions.
 
 ## Publications
-D. Knichel, A. Moradi, N. Müller, P. Sasdrich (2021): "Automated Generation of Masked Hardware" (TCHES 2022, Issue 1) https://eprint.iacr.org/2021/569/
+D. Knichel, A. Moradi, N. Müller, P. Sasdrich (2021): "[Automated Generation of Masked Hardware](https://doi.org/10.46586/tches.v2022.i1.589-629)" (TCHES 2022, Issue 1) [(pre-print)](https://eprint.iacr.org/2021/569.pdf)
+
+
