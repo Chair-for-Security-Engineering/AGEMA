@@ -1127,9 +1127,10 @@ int ReadDesignFile_Find_IO_Port(char* Str1, char SubCircuitRead, int CellTypeInd
 //***************************************************************************************
 
 int ReadDesignFile_Find_Signal_Name(char* Str1, char SubCircuitRead, int CellTypeIndex, int CaseIndex,
-                                    LibraryStruct* Library, CircuitStruct* Circuit, int NumberOfSignalsOffset, int NumberOfCellsOffset,
+                                    LibraryStruct* Library, CircuitStruct* Circuit, int Task,
+                                    int NumberOfSignalsOffset, int NumberOfCellsOffset,
                                     char* SubCircuitInstanceName, CircuitStruct* SubCircuit,
-                                    int* InputPorts, int NumberOfInputPorts, int* OutputPorts, int NumberOfOutputPorts, int &CurrentIO)
+                                    int* &InputPorts, int &NumberOfInputPorts, int* &OutputPorts, int &NumberOfOutputPorts, int &CurrentIO)
 {
 	int          SignalIndex;
 	int          SignalIndexWithOffset;
@@ -1146,6 +1147,8 @@ int ReadDesignFile_Find_Signal_Name(char* Str1, char SubCircuitRead, int CellTyp
     static char* Str3 = NULL;
     int          Index1, Index2, IndexUpwards;
     int          j;
+    CellStruct** TempCells;
+    int*         TempGates;
     int*         IOSignals = NULL;
     int          NumberOfIOSignals = 0;
     char*        strptr;
@@ -1294,111 +1297,198 @@ int ReadDesignFile_Find_Signal_Name(char* Str1, char SubCircuitRead, int CellTyp
 
 	//**********************************************//
 
-	if (NumberOfIOSignals != (NumberOfInputPorts + NumberOfOutputPorts))
+	if (Task == Task_find_assign_signal_name1)
 	{
-		printf("The size of the signal \"%s\" does not match to the connected port\n", Str1);
-		free(IOSignals);
-		return 1;
-	}
+		free(InputPorts);
+		NumberOfInputPorts = NumberOfIOSignals;
+		InputPorts = (int *)malloc(NumberOfInputPorts * sizeof(int));
 
-	if (!SubCircuitRead)
+		for (TempIndex = 0; TempIndex < NumberOfIOSignals; TempIndex++)
+		{
+			CellTypeIndex = Library->BufferCellType; // not necessary
+
+			TempCells = (CellStruct **)malloc((Circuit->NumberOfCells + 1) * sizeof(CellStruct *));
+			memcpy(TempCells, Circuit->Cells, Circuit->NumberOfCells * sizeof(CellStruct *));
+			free(Circuit->Cells);
+			Circuit->Cells = TempCells;
+
+			Circuit->Cells[Circuit->NumberOfCells] = (CellStruct *)malloc(sizeof(CellStruct));
+			Circuit->Cells[Circuit->NumberOfCells]->Type = CellTypeIndex;
+			Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs = Library->CellTypes[CellTypeIndex]->NumberOfInputs;
+			Circuit->Cells[Circuit->NumberOfCells]->Inputs = (int *)malloc(Library->CellTypes[CellTypeIndex]->NumberOfInputs * sizeof(int));
+			Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs = Library->CellTypes[CellTypeIndex]->NumberOfOutputs;
+			Circuit->Cells[Circuit->NumberOfCells]->Outputs = (int *)malloc(Library->CellTypes[CellTypeIndex]->NumberOfOutputs * sizeof(int));
+			Circuit->Cells[Circuit->NumberOfCells]->OrigType = -1;
+			Circuit->Cells[Circuit->NumberOfCells]->NumberOfStages = Library->CellTypes[CellTypeIndex]->NumberOfStages;
+			Circuit->Cells[Circuit->NumberOfCells]->Deleted = 0;
+
+			for (InputIndex = 0;InputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs; InputIndex++)
+				Circuit->Cells[Circuit->NumberOfCells]->Inputs[InputIndex] = -1;
+
+			for (OutputIndex = 0;OutputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs; OutputIndex++)
+				Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] = -1;
+
+			//if (Library->CellTypes[CellTypeIndex]->GateOrReg == CellType_Gate)
+			TempGates = (int *)malloc((Circuit->NumberOfGates + 1) * sizeof(int));
+			memcpy(TempGates, Circuit->Gates, Circuit->NumberOfGates * sizeof(int));
+			free(Circuit->Gates);
+			Circuit->Gates = TempGates;
+
+			Circuit->Gates[Circuit->NumberOfGates] = Circuit->NumberOfCells + NumberOfCellsOffset;
+			Circuit->NumberOfGates++;
+
+			//if (!strcmp(Str1, "assign"))
+			sprintf(Str2, "assign_%d", Circuit->NumberOfCells);
+			Circuit->Cells[Circuit->NumberOfCells]->Name = (char *)malloc(Max_Name_Short);
+			strcpy(Circuit->Cells[Circuit->NumberOfCells]->Name, Str2); // Str1 = "assign_%d"
+
+			SignalIndex = IOSignals[TempIndex];
+			OutputIndex = 0;
+			Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] = SignalIndex;
+			if (SignalIndex >= Circuit->NumberOfConstants)
+				Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] += NumberOfSignalsOffset;
+
+			Circuit->Signals[SignalIndex]->Output = Circuit->NumberOfCells + NumberOfCellsOffset;
+
+			InputPorts[TempIndex] = Circuit->NumberOfCells;
+			Circuit->NumberOfCells++;
+		}
+	}
+	else if (Task == Task_find_assign_signal_name2)
 	{
-		for (TempIndex = 0; TempIndex < (NumberOfInputPorts + NumberOfOutputPorts); TempIndex++)
+		if (NumberOfIOSignals != NumberOfInputPorts)
+		{
+				printf("The size of the signal \"%s\" does not match to the connected signal!\n", Str1);
+				free(IOSignals);
+				return 1;
+		}
+
+		for (TempIndex = 0; TempIndex < NumberOfIOSignals; TempIndex++)
 		{
 			SignalIndex = IOSignals[TempIndex];
-			if (TempIndex < NumberOfInputPorts)
-			{
-				InputIndex = InputPorts[TempIndex];
-				Circuit->Cells[Circuit->NumberOfCells]->Inputs[InputIndex] = SignalIndex;
-				if (SignalIndex >= Circuit->NumberOfConstants)
-					Circuit->Cells[Circuit->NumberOfCells]->Inputs[InputIndex] += NumberOfSignalsOffset;
+			CellIndex = InputPorts[TempIndex];
+			InputIndex = 0;
+			Circuit->Cells[CellIndex]->Inputs[InputIndex] = SignalIndex;
+			if (SignalIndex >= Circuit->NumberOfConstants)
+				Circuit->Cells[CellIndex]->Inputs[InputIndex] += NumberOfSignalsOffset;
 
-				Buffer_int = (int *)malloc((Circuit->Signals[SignalIndex]->NumberOfInputs + 1) * sizeof(int));
-				memcpy(Buffer_int, Circuit->Signals[SignalIndex]->Inputs, Circuit->Signals[SignalIndex]->NumberOfInputs * sizeof(int));
-				free(Circuit->Signals[SignalIndex]->Inputs);
-				Circuit->Signals[SignalIndex]->Inputs = Buffer_int;
+			Buffer_int = (int *)malloc((Circuit->Signals[SignalIndex]->NumberOfInputs + 1) * sizeof(int));
+			memcpy(Buffer_int, Circuit->Signals[SignalIndex]->Inputs, Circuit->Signals[SignalIndex]->NumberOfInputs * sizeof(int));
+			free(Circuit->Signals[SignalIndex]->Inputs);
+			Circuit->Signals[SignalIndex]->Inputs = Buffer_int;
 
-				Circuit->Signals[SignalIndex]->Inputs[Circuit->Signals[SignalIndex]->NumberOfInputs] = Circuit->NumberOfCells + NumberOfCellsOffset;
-				Circuit->Signals[SignalIndex]->NumberOfInputs++;
-			}
-			else
-			{
-				OutputIndex = OutputPorts[TempIndex - NumberOfInputPorts];
-				Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] = SignalIndex;
-				if (SignalIndex >= Circuit->NumberOfConstants)
-					Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] += NumberOfSignalsOffset;
-
-				if (SignalIndex != -1)
-				{
-					Circuit->Signals[SignalIndex]->Output = Circuit->NumberOfCells + NumberOfCellsOffset;
-					if (Library->CellTypes[CellTypeIndex]->GateOrReg == CellType_Reg)
-						Circuit->Signals[SignalIndex]->Depth = 0;
-				}
-			}
-
-			CurrentIO++;
+			Circuit->Signals[SignalIndex]->Inputs[Circuit->Signals[SignalIndex]->NumberOfInputs] = CellIndex + NumberOfCellsOffset;
+			Circuit->Signals[SignalIndex]->NumberOfInputs++;
 		}
 	}
 	else
 	{
-		for (TempIndex = 0; TempIndex < (NumberOfInputPorts + NumberOfOutputPorts); TempIndex++)
+		if (NumberOfIOSignals != (NumberOfInputPorts + NumberOfOutputPorts))
 		{
-			SignalIndex = IOSignals[TempIndex];
-			SignalIndexWithOffset = SignalIndex;
-			if (SignalIndexWithOffset >= Circuit->NumberOfConstants)
-				SignalIndexWithOffset += NumberOfSignalsOffset;
+			printf("The size of the signal \"%s\" does not match to the connected port\n", Str1);
+			free(IOSignals);
+			return 1;
+		}
 
-			if (TempIndex < NumberOfInputPorts)
-				SignalIndex2WithOffset = SubCircuit->Inputs[InputPorts[TempIndex]];
-			else
-				SignalIndex2WithOffset = SubCircuit->Outputs[OutputPorts[TempIndex - NumberOfInputPorts]];
-
-			SignalIndex2 = SignalIndex2WithOffset;
-			if (SignalIndex2 >= Circuit->NumberOfConstants)
-				SignalIndex2 -= NumberOfSignalsOffset;
-
-			Circuit->Signals[SignalIndex2]->Type = SignalType_wire;
-
-			if (SignalIndex != -1)
+		if (!SubCircuitRead)
+		{
+			for (TempIndex = 0; TempIndex < (NumberOfInputPorts + NumberOfOutputPorts); TempIndex++)
 			{
-				Buffer_int = (int *)malloc((Circuit->Signals[SignalIndex]->NumberOfInputs + Circuit->Signals[SignalIndex2]->NumberOfInputs) * sizeof(int));
-				memcpy(Buffer_int, Circuit->Signals[SignalIndex]->Inputs, Circuit->Signals[SignalIndex]->NumberOfInputs * sizeof(int));
-				free(Circuit->Signals[SignalIndex]->Inputs);
-				Circuit->Signals[SignalIndex]->Inputs = Buffer_int;
-
-				for (InputIndex = 0; InputIndex < Circuit->Signals[SignalIndex2]->NumberOfInputs; InputIndex++)
+				SignalIndex = IOSignals[TempIndex];
+				if (TempIndex < NumberOfInputPorts)
 				{
-					CellIndex = Circuit->Signals[SignalIndex2]->Inputs[InputIndex];
-					Circuit->Signals[SignalIndex]->Inputs[Circuit->Signals[SignalIndex]->NumberOfInputs] = CellIndex;
+					InputIndex = InputPorts[TempIndex];
+					Circuit->Cells[Circuit->NumberOfCells]->Inputs[InputIndex] = SignalIndex;
+					if (SignalIndex >= Circuit->NumberOfConstants)
+						Circuit->Cells[Circuit->NumberOfCells]->Inputs[InputIndex] += NumberOfSignalsOffset;
+
+					Buffer_int = (int *)malloc((Circuit->Signals[SignalIndex]->NumberOfInputs + 1) * sizeof(int));
+					memcpy(Buffer_int, Circuit->Signals[SignalIndex]->Inputs, Circuit->Signals[SignalIndex]->NumberOfInputs * sizeof(int));
+					free(Circuit->Signals[SignalIndex]->Inputs);
+					Circuit->Signals[SignalIndex]->Inputs = Buffer_int;
+
+					Circuit->Signals[SignalIndex]->Inputs[Circuit->Signals[SignalIndex]->NumberOfInputs] = Circuit->NumberOfCells + NumberOfCellsOffset;
 					Circuit->Signals[SignalIndex]->NumberOfInputs++;
-
-					CellIndex -= NumberOfCellsOffset;
-					for (InputIndex2 = 0; InputIndex2 < Circuit->Cells[CellIndex]->NumberOfInputs; InputIndex2++)
-						if (Circuit->Cells[CellIndex]->Inputs[InputIndex2] == SignalIndex2WithOffset)
-							Circuit->Cells[CellIndex]->Inputs[InputIndex2] = SignalIndexWithOffset;
 				}
-
-				if (TempIndex >= NumberOfInputPorts)
+				else
 				{
-					CellIndex = Circuit->Signals[SignalIndex2]->Output;
-					Circuit->Signals[SignalIndex]->Output = CellIndex;
-					if (CellIndex != -1)
-					{
-						CellIndex -= NumberOfCellsOffset;
+					OutputIndex = OutputPorts[TempIndex - NumberOfInputPorts];
+					Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] = SignalIndex;
+					if (SignalIndex >= Circuit->NumberOfConstants)
+						Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] += NumberOfSignalsOffset;
 
-						for (OutputIndex2 = 0; OutputIndex2 < Circuit->Cells[CellIndex]->NumberOfOutputs; OutputIndex2++)
-							if (Circuit->Cells[CellIndex]->Outputs[OutputIndex2] == SignalIndex2WithOffset)
-								Circuit->Cells[CellIndex]->Outputs[OutputIndex2] = SignalIndexWithOffset;
+					if (SignalIndex != -1)
+					{
+						Circuit->Signals[SignalIndex]->Output = Circuit->NumberOfCells + NumberOfCellsOffset;
+						if (Library->CellTypes[CellTypeIndex]->GateOrReg == CellType_Reg)
+							Circuit->Signals[SignalIndex]->Depth = 0;
 					}
 				}
 
-				free(Circuit->Signals[SignalIndex2]->Inputs);
-				Circuit->Signals[SignalIndex2]->Inputs = NULL;
-				Circuit->Signals[SignalIndex2]->NumberOfInputs = 0;
-				Circuit->Signals[SignalIndex2]->Deleted = 1;
+				CurrentIO++;
 			}
+		}
+		else
+		{
+			for (TempIndex = 0; TempIndex < (NumberOfInputPorts + NumberOfOutputPorts); TempIndex++)
+			{
+				SignalIndex = IOSignals[TempIndex];
+				SignalIndexWithOffset = SignalIndex;
+				if (SignalIndexWithOffset >= Circuit->NumberOfConstants)
+					SignalIndexWithOffset += NumberOfSignalsOffset;
 
-			CurrentIO++;
+				if (TempIndex < NumberOfInputPorts)
+					SignalIndex2WithOffset = SubCircuit->Inputs[InputPorts[TempIndex]];
+				else
+					SignalIndex2WithOffset = SubCircuit->Outputs[OutputPorts[TempIndex - NumberOfInputPorts]];
+
+				SignalIndex2 = SignalIndex2WithOffset;
+				if (SignalIndex2 >= Circuit->NumberOfConstants)
+					SignalIndex2 -= NumberOfSignalsOffset;
+
+				Circuit->Signals[SignalIndex2]->Type = SignalType_wire;
+
+				if (SignalIndex != -1)
+				{
+					Buffer_int = (int *)malloc((Circuit->Signals[SignalIndex]->NumberOfInputs + Circuit->Signals[SignalIndex2]->NumberOfInputs) * sizeof(int));
+					memcpy(Buffer_int, Circuit->Signals[SignalIndex]->Inputs, Circuit->Signals[SignalIndex]->NumberOfInputs * sizeof(int));
+					free(Circuit->Signals[SignalIndex]->Inputs);
+					Circuit->Signals[SignalIndex]->Inputs = Buffer_int;
+
+					for (InputIndex = 0; InputIndex < Circuit->Signals[SignalIndex2]->NumberOfInputs; InputIndex++)
+					{
+						CellIndex = Circuit->Signals[SignalIndex2]->Inputs[InputIndex];
+						Circuit->Signals[SignalIndex]->Inputs[Circuit->Signals[SignalIndex]->NumberOfInputs] = CellIndex;
+						Circuit->Signals[SignalIndex]->NumberOfInputs++;
+
+						CellIndex -= NumberOfCellsOffset;
+						for (InputIndex2 = 0; InputIndex2 < Circuit->Cells[CellIndex]->NumberOfInputs; InputIndex2++)
+							if (Circuit->Cells[CellIndex]->Inputs[InputIndex2] == SignalIndex2WithOffset)
+								Circuit->Cells[CellIndex]->Inputs[InputIndex2] = SignalIndexWithOffset;
+					}
+
+					if (TempIndex >= NumberOfInputPorts)
+					{
+						CellIndex = Circuit->Signals[SignalIndex2]->Output;
+						Circuit->Signals[SignalIndex]->Output = CellIndex;
+						if (CellIndex != -1)
+						{
+							CellIndex -= NumberOfCellsOffset;
+
+							for (OutputIndex2 = 0; OutputIndex2 < Circuit->Cells[CellIndex]->NumberOfOutputs; OutputIndex2++)
+								if (Circuit->Cells[CellIndex]->Outputs[OutputIndex2] == SignalIndex2WithOffset)
+									Circuit->Cells[CellIndex]->Outputs[OutputIndex2] = SignalIndexWithOffset;
+						}
+					}
+
+					free(Circuit->Signals[SignalIndex2]->Inputs);
+					Circuit->Signals[SignalIndex2]->Inputs = NULL;
+					Circuit->Signals[SignalIndex2]->NumberOfInputs = 0;
+					Circuit->Signals[SignalIndex2]->Deleted = 1;
+				}
+
+				CurrentIO++;
+			}
 		}
 	}
 
@@ -1641,7 +1731,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 							{
 								// do nothing
 							}
-							else if (ch == ':')
+							else if ((ch == ':') && (Str1[0] != '\\'))
 							{
 								Index1 = atoi(Str1);
 								i = 0;
@@ -1663,30 +1753,82 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 									else
 										sprintf(Str2, "%s", Str1);
 
-									TempSignals = (SignalStruct **)malloc((Circuit->NumberOfSignals + 1) * sizeof(SignalStruct *));
-									memcpy(TempSignals, Circuit->Signals, Circuit->NumberOfSignals * sizeof(SignalStruct *));
-									free(Circuit->Signals);
-									Circuit->Signals = TempSignals;
+									for (SignalIndex = 0; SignalIndex < Circuit->NumberOfSignals; SignalIndex++)
+										if (!strcmp(Str2, Circuit->Signals[SignalIndex]->Name))
+											break;
 
-									Circuit->Signals[Circuit->NumberOfSignals] = (SignalStruct *)malloc(sizeof(SignalStruct));
-									Circuit->Signals[Circuit->NumberOfSignals]->Name = (char *)malloc(Max_Name_Short * sizeof(char));
-									strcpy(Circuit->Signals[Circuit->NumberOfSignals]->Name, Str2);
-									Circuit->Signals[Circuit->NumberOfSignals]->FreshMask = 0;
-									Circuit->Signals[Circuit->NumberOfSignals]->NumberOfInputs = 0;
-									Circuit->Signals[Circuit->NumberOfSignals]->Inputs = NULL;
-									Circuit->Signals[Circuit->NumberOfSignals]->Output = -1;
-									Circuit->Signals[Circuit->NumberOfSignals]->Deleted = 0;
+									if (SignalIndex < Circuit->NumberOfSignals)
+									{
+										if (!strcmp(Phrase, "input"))
+										{
+											if (Circuit->Signals[SignalIndex]->Type != SignalType_wire)
+											{
+												printf("\nsignal \"%s\" is defined multiple times\n", Str2);
+												fclose(DesignFile);
+												free(Str1);
+												free(Str2);
+												free(Phrase);
+												free(SubCircuitInstanceName);
+												return 1;
+											}
+										}
+										else if (!strcmp(Phrase, "output"))
+										{
+											if (Circuit->Signals[SignalIndex]->Type != SignalType_wire)
+											{
+												printf("\nsignal \"%s\" is defined multiple times\n", Str2);
+												fclose(DesignFile);
+												free(Str1);
+												free(Str2);
+												free(Phrase);
+												free(SubCircuitInstanceName);
+												return 1;
+											}
+										}
+										else // if (!strcmp(Phrase, "wire"))
+										{
+											if (Circuit->Signals[SignalIndex]->Type == SignalType_wire)
+											{
+												printf("\nsignal \"%s\" is defined multiple times\n", Str2);
+												fclose(DesignFile);
+												free(Str1);
+												free(Str2);
+												free(Phrase);
+												free(SubCircuitInstanceName);
+												return 1;
+											}
+										}
+									}
+									else
+									{
+										TempSignals = (SignalStruct **)malloc((Circuit->NumberOfSignals + 1) * sizeof(SignalStruct *));
+										memcpy(TempSignals, Circuit->Signals, Circuit->NumberOfSignals * sizeof(SignalStruct *));
+										free(Circuit->Signals);
+										Circuit->Signals = TempSignals;
+
+										Circuit->Signals[Circuit->NumberOfSignals] = (SignalStruct *)malloc(sizeof(SignalStruct));
+										Circuit->Signals[Circuit->NumberOfSignals]->Name = (char *)malloc(Max_Name_Short * sizeof(char));
+										strcpy(Circuit->Signals[Circuit->NumberOfSignals]->Name, Str2);
+										Circuit->Signals[Circuit->NumberOfSignals]->FreshMask = 0;
+										Circuit->Signals[Circuit->NumberOfSignals]->NumberOfInputs = 0;
+										Circuit->Signals[Circuit->NumberOfSignals]->Inputs = NULL;
+										Circuit->Signals[Circuit->NumberOfSignals]->Output = -1;
+										Circuit->Signals[Circuit->NumberOfSignals]->Deleted = 0;
+
+										SignalIndex = Circuit->NumberOfSignals;
+										Circuit->NumberOfSignals++;
+									}
 
 									if (!strcmp(Phrase, "input"))
 									{
-										Circuit->Signals[Circuit->NumberOfSignals]->Type = SignalType_input;
+										Circuit->Signals[SignalIndex]->Type = SignalType_input;
 
 										TempInputs = (int *)malloc((Circuit->NumberOfInputs + 1) * sizeof(int));
 										memcpy(TempInputs, Circuit->Inputs, Circuit->NumberOfInputs * sizeof(int));
 										free(Circuit->Inputs);
 										Circuit->Inputs = TempInputs;
 
-										Circuit->Inputs[Circuit->NumberOfInputs] = Circuit->NumberOfSignals + NumberOfSignalsOffset;
+										Circuit->Inputs[Circuit->NumberOfInputs] = SignalIndex + NumberOfSignalsOffset;
 										Circuit->NumberOfInputs++;
 
 										if (NewAttributeIndex < NumberOfNewAttributes)
@@ -1707,9 +1849,9 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 											}
 
 											if (!strcmp(NewAttributes[NewAttributeIndex], "clock"))
-												Circuit->ClockSignalIndex = Circuit->NumberOfSignals;
+												Circuit->ClockSignalIndex = SignalIndex;
 											else if (!strcmp(NewAttributes[NewAttributeIndex], "reset"))
-												Circuit->ResetSignalIndex = Circuit->NumberOfSignals;
+												Circuit->ResetSignalIndex = SignalIndex;
 											else if (strcmp(NewAttributes[NewAttributeIndex], "secure") &&
 												strcmp(NewAttributes[NewAttributeIndex], "constant"))
 											{
@@ -1722,8 +1864,8 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 												return 1;
 											}
 
-											Circuit->Signals[Circuit->NumberOfSignals]->Attribute = (char*)malloc((strlen(NewAttributes[NewAttributeIndex]) + 1) * sizeof(char));
-											strcpy(Circuit->Signals[Circuit->NumberOfSignals]->Attribute, NewAttributes[NewAttributeIndex]);
+											Circuit->Signals[SignalIndex]->Attribute = (char*)malloc((strlen(NewAttributes[NewAttributeIndex]) + 1) * sizeof(char));
+											strcpy(Circuit->Signals[SignalIndex]->Attribute, NewAttributes[NewAttributeIndex]);
 
 											if (strcmp(NewAttributes[NewAttributeIndex], "secure") && // add it to the list if it is not secure nor constant
 												strcmp(NewAttributes[NewAttributeIndex], "constant"))
@@ -1740,7 +1882,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 											}
 										}
 										else if (!WithAttributes)
-											Circuit->Signals[Circuit->NumberOfSignals]->Attribute = (char*)calloc(1, sizeof(char));
+											Circuit->Signals[SignalIndex]->Attribute = (char*)calloc(1, sizeof(char));
 										else
 										{
 											printf("\nattribute of input %s not given\n", Str2);
@@ -1752,34 +1894,32 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 											return 1;
 										}
 
-										if (!strcmp(Circuit->Signals[Circuit->NumberOfSignals]->Attribute, "clock")) // ||	(!strcmp(Circuit->Signals[Circuit->NumberOfSignals]->Attribute, "reset")))
-											Circuit->Signals[Circuit->NumberOfSignals]->ToBeBalanced = 0;
+										if (!strcmp(Circuit->Signals[SignalIndex]->Attribute, "clock")) // ||	(!strcmp(Circuit->Signals[SignalIndex]->Attribute, "reset")))
+											Circuit->Signals[SignalIndex]->ToBeBalanced = 0;
 										else
-											Circuit->Signals[Circuit->NumberOfSignals]->ToBeBalanced = 1;
+											Circuit->Signals[SignalIndex]->ToBeBalanced = 1;
 									}
 									else if (!strcmp(Phrase, "output"))
 									{
-										Circuit->Signals[Circuit->NumberOfSignals]->Type = SignalType_output;
+										Circuit->Signals[SignalIndex]->Type = SignalType_output;
 
 										TempOutputs = (int *)malloc((Circuit->NumberOfOutputs + 1) * sizeof(int));
 										memcpy(TempOutputs, Circuit->Outputs, Circuit->NumberOfOutputs * sizeof(int));
 										free(Circuit->Outputs);
 										Circuit->Outputs = TempOutputs;
 
-										Circuit->Outputs[Circuit->NumberOfOutputs] = Circuit->NumberOfSignals + NumberOfSignalsOffset;
+										Circuit->Outputs[Circuit->NumberOfOutputs] = SignalIndex + NumberOfSignalsOffset;
 										Circuit->NumberOfOutputs++;
 
-										Circuit->Signals[Circuit->NumberOfSignals]->Attribute = (char*)calloc(1, sizeof(char));
-										Circuit->Signals[Circuit->NumberOfSignals]->ToBeBalanced = 1;
+										Circuit->Signals[SignalIndex]->Attribute = (char*)calloc(1, sizeof(char));
+										Circuit->Signals[SignalIndex]->ToBeBalanced = 1;
 									}
-									else  // if (!strcmp(Phrase, "wire"))
+									if ((!strcmp(Phrase, "wire")) && (SignalIndex == Circuit->NumberOfSignals - 1))
 									{
-										Circuit->Signals[Circuit->NumberOfSignals]->Type = SignalType_wire;
-										Circuit->Signals[Circuit->NumberOfSignals]->Attribute = (char*)calloc(1, sizeof(char));
-										Circuit->Signals[Circuit->NumberOfSignals]->ToBeBalanced = 1;
+										Circuit->Signals[SignalIndex]->Type = SignalType_wire;
+										Circuit->Signals[SignalIndex]->Attribute = (char*)calloc(1, sizeof(char));
+										Circuit->Signals[SignalIndex]->ToBeBalanced = 1;
 									}
-
-									Circuit->NumberOfSignals++;
 								}
 
 								i = 0;
@@ -1824,9 +1964,21 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 									{
 										if (Task == Task_find_module_type)
 										{
-											if (!strcmp(Str1, "assign"))
-												if (Library->BufferCellType > -1)
-													CellTypeIndex = Library->BufferCellType;
+                                            if (!strcmp(Str1, "assign"))
+                                                if (Library->BufferCellType > -1)
+                                                {
+                                                	CellTypeIndex = Library->BufferCellType;
+
+                                                	SubCircuitRead = 0;
+													NumberOfInputPorts = 0;
+													free(InputPorts);
+													InputPorts = NULL;
+													NumberOfOutputPorts = 0;
+													free(OutputPorts);
+													OutputPorts = NULL;
+
+                                                	Task = Task_find_assign_signal_name1;
+												}
 												else
 												{
 													printf("\nbuffer cell is not defined in the library for \"assign\" statements\n");
@@ -1838,6 +1990,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 													return 1;
 												}
 											else
+											{
 												for (CellTypeIndex = 0;CellTypeIndex < Library->NumberOfCellTypes;CellTypeIndex++)
 												{
 													for (CaseIndex = 0;CaseIndex < Library->CellTypes[CellTypeIndex]->NumberOfCases;CaseIndex++)
@@ -1848,142 +2001,125 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 														break;
 												}
 
-											if (CellTypeIndex < Library->NumberOfCellTypes)
-											{
-												TempCells = (CellStruct **)malloc((Circuit->NumberOfCells + 1) * sizeof(CellStruct *));
-												memcpy(TempCells, Circuit->Cells, Circuit->NumberOfCells * sizeof(CellStruct *));
-												free(Circuit->Cells);
-												Circuit->Cells = TempCells;
-
-												Circuit->Cells[Circuit->NumberOfCells] = (CellStruct *)malloc(sizeof(CellStruct));
-												Circuit->Cells[Circuit->NumberOfCells]->Type = CellTypeIndex;
-												Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs = Library->CellTypes[CellTypeIndex]->NumberOfInputs;
-												Circuit->Cells[Circuit->NumberOfCells]->Inputs = (int *)malloc(Library->CellTypes[CellTypeIndex]->NumberOfInputs * sizeof(int));
-												Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs = Library->CellTypes[CellTypeIndex]->NumberOfOutputs;
-												Circuit->Cells[Circuit->NumberOfCells]->Outputs = (int *)malloc(Library->CellTypes[CellTypeIndex]->NumberOfOutputs * sizeof(int));
-												Circuit->Cells[Circuit->NumberOfCells]->OrigType = -1;
-												Circuit->Cells[Circuit->NumberOfCells]->NumberOfStages = Library->CellTypes[CellTypeIndex]->NumberOfStages;
-												Circuit->Cells[Circuit->NumberOfCells]->Deleted = 0;
-
-                                                for (InputIndex = 0;InputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs; InputIndex++)
-                                                	Circuit->Cells[Circuit->NumberOfCells]->Inputs[InputIndex] = -1;
-
-                                                for (OutputIndex = 0;OutputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs; OutputIndex++)
-                                                	Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] = -1;
-
-												if (Library->CellTypes[CellTypeIndex]->GateOrReg == CellType_Gate)
+												if (CellTypeIndex < Library->NumberOfCellTypes)
 												{
-													TempGates = (int *)malloc((Circuit->NumberOfGates + 1) * sizeof(int));
+													TempCells = (CellStruct **)malloc((Circuit->NumberOfCells + 1) * sizeof(CellStruct *));
+													memcpy(TempCells, Circuit->Cells, Circuit->NumberOfCells * sizeof(CellStruct *));
+													free(Circuit->Cells);
+													Circuit->Cells = TempCells;
+
+													Circuit->Cells[Circuit->NumberOfCells] = (CellStruct *)malloc(sizeof(CellStruct));
+													Circuit->Cells[Circuit->NumberOfCells]->Type = CellTypeIndex;
+													Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs = Library->CellTypes[CellTypeIndex]->NumberOfInputs;
+													Circuit->Cells[Circuit->NumberOfCells]->Inputs = (int *)malloc(Library->CellTypes[CellTypeIndex]->NumberOfInputs * sizeof(int));
+													Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs = Library->CellTypes[CellTypeIndex]->NumberOfOutputs;
+													Circuit->Cells[Circuit->NumberOfCells]->Outputs = (int *)malloc(Library->CellTypes[CellTypeIndex]->NumberOfOutputs * sizeof(int));
+													Circuit->Cells[Circuit->NumberOfCells]->OrigType = -1;
+													Circuit->Cells[Circuit->NumberOfCells]->NumberOfStages = Library->CellTypes[CellTypeIndex]->NumberOfStages;
+													Circuit->Cells[Circuit->NumberOfCells]->Deleted = 0;
+
+													for (InputIndex = 0;InputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs; InputIndex++)
+														Circuit->Cells[Circuit->NumberOfCells]->Inputs[InputIndex] = -1;
+
+													for (OutputIndex = 0;OutputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs; OutputIndex++)
+														Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] = -1;
+
+													if (Library->CellTypes[CellTypeIndex]->GateOrReg == CellType_Gate)
+													{
+														TempGates = (int *)malloc((Circuit->NumberOfGates + 1) * sizeof(int));
+														memcpy(TempGates, Circuit->Gates, Circuit->NumberOfGates * sizeof(int));
+														free(Circuit->Gates);
+														Circuit->Gates = TempGates;
+
+														Circuit->Gates[Circuit->NumberOfGates] = Circuit->NumberOfCells + NumberOfCellsOffset;
+														Circuit->NumberOfGates++;
+													}
+													else // CellType_Reg
+													{
+														TempRegs = (int *)malloc((Circuit->NumberOfRegs + 1) * sizeof(int));
+														memcpy(TempRegs, Circuit->Regs, Circuit->NumberOfRegs * sizeof(int));
+														free(Circuit->Regs);
+														Circuit->Regs = TempRegs;
+
+														Circuit->Regs[Circuit->NumberOfRegs] = Circuit->NumberOfCells + NumberOfCellsOffset;
+														Circuit->NumberOfRegs++;
+													}
+
+													Task = Task_find_module_name;
+													MyNumberofIO = Library->CellTypes[CellTypeIndex]->NumberOfInputs + Library->CellTypes[CellTypeIndex]->NumberOfOutputs;
+													CurrentIO = 0;
+													SubCircuitRead = 0;
+												}
+												else
+												{
+													SubCircuit.Signals = NULL;
+													SubCircuit.NumberOfSignals = 0;
+													SubCircuit.Constants = NULL;
+													SubCircuit.NumberOfConstants = 0;
+													SubCircuit.Inputs = NULL;
+													SubCircuit.Outputs = NULL;
+													SubCircuit.NumberOfInputs = 0;
+													SubCircuit.NumberOfOutputs = 0;
+													SubCircuit.Cells = NULL;
+													SubCircuit.NumberOfCells = 0;
+													SubCircuit.Gates = NULL;
+													SubCircuit.Regs = NULL;
+													SubCircuit.NumberOfGates = 0;
+													SubCircuit.NumberOfRegs = 0;
+													SubCircuit.ClockSignalIndex = -1;
+													SubCircuit.ResetSignalIndex = -1;
+													SubCircuit.MaxDepth = 0;
+													SubCircuit.CellsInDepth = NULL;
+													SubCircuit.NumberOfCellsInDepth = NULL;
+													SubCircuit.FreshMasks = NULL;
+													SubCircuit.NumberOfFreshMasks = 0;
+
+													if (ReadDesignFile(InputVerilogFileName, Str1, Library, &SubCircuit, NULL, 0,
+																	   NumberOfSignalsOffset + Circuit->NumberOfSignals - Circuit->NumberOfConstants,
+																	   NumberOfCellsOffset + Circuit->NumberOfCells))
+													{
+														printf("\ncell type or module \"%s\" not found\n", Str1);
+														fclose(DesignFile);
+														free(Str1);
+														free(Str2);
+														free(Phrase);
+														free(SubCircuitInstanceName);
+														return 1;
+													}
+
+													TempSignals = (SignalStruct **)malloc((Circuit->NumberOfSignals + SubCircuit.NumberOfSignals - SubCircuit.NumberOfConstants) * sizeof(SignalStruct *));
+													memcpy(TempSignals, Circuit->Signals, Circuit->NumberOfSignals * sizeof(SignalStruct *));
+													free(Circuit->Signals);
+													Circuit->Signals = TempSignals;
+													memcpy(&Circuit->Signals[Circuit->NumberOfSignals], &SubCircuit.Signals[SubCircuit.NumberOfConstants], (SubCircuit.NumberOfSignals - SubCircuit.NumberOfConstants) * sizeof(SignalStruct *));
+													Circuit->NumberOfSignals += SubCircuit.NumberOfSignals - SubCircuit.NumberOfConstants;
+
+													TempCells = (CellStruct **)malloc((Circuit->NumberOfCells + SubCircuit.NumberOfCells) * sizeof(CellStruct *));
+													memcpy(TempCells, Circuit->Cells, Circuit->NumberOfCells * sizeof(CellStruct *));
+													free(Circuit->Cells);
+													Circuit->Cells = TempCells;
+													memcpy(&Circuit->Cells[Circuit->NumberOfCells], SubCircuit.Cells, SubCircuit.NumberOfCells * sizeof(CellStruct *));
+													Circuit->NumberOfCells += SubCircuit.NumberOfCells;
+
+													TempGates = (int *)malloc((Circuit->NumberOfGates + SubCircuit.NumberOfGates) * sizeof(int));
 													memcpy(TempGates, Circuit->Gates, Circuit->NumberOfGates * sizeof(int));
 													free(Circuit->Gates);
 													Circuit->Gates = TempGates;
+													memcpy(&Circuit->Gates[Circuit->NumberOfGates], SubCircuit.Gates, SubCircuit.NumberOfGates * sizeof(int));
+													Circuit->NumberOfGates += SubCircuit.NumberOfGates;
 
-													Circuit->Gates[Circuit->NumberOfGates] = Circuit->NumberOfCells + NumberOfCellsOffset;
-													Circuit->NumberOfGates++;
-												}
-												else // CellType_Reg
-												{
-													TempRegs = (int *)malloc((Circuit->NumberOfRegs + 1) * sizeof(int));
+													TempRegs = (int *)malloc((Circuit->NumberOfRegs + SubCircuit.NumberOfRegs) * sizeof(int));
 													memcpy(TempRegs, Circuit->Regs, Circuit->NumberOfRegs * sizeof(int));
 													free(Circuit->Regs);
 													Circuit->Regs = TempRegs;
+													memcpy(&Circuit->Regs[Circuit->NumberOfRegs], SubCircuit.Regs, SubCircuit.NumberOfRegs * sizeof(int));
+													Circuit->NumberOfRegs += SubCircuit.NumberOfRegs;
 
-													Circuit->Regs[Circuit->NumberOfRegs] = Circuit->NumberOfCells + NumberOfCellsOffset;
-													Circuit->NumberOfRegs++;
-												}
-
-												if (!strcmp(Str1, "assign"))
-												{
-													sprintf(Str1, "assign_%d", Circuit->NumberOfCells);
-													Circuit->Cells[Circuit->NumberOfCells]->Name = (char *)malloc(Max_Name_Short * sizeof(char));
-													strcpy(Circuit->Cells[Circuit->NumberOfCells]->Name, Str1); // Str1 = "assign_%d"
-
-                                                    NumberOfInputPorts = 0;
-                                                    free(InputPorts);
-                                                    InputPorts = NULL;
-                                                    NumberOfOutputPorts = 1;
-                                                    free(OutputPorts);
-                                                    OutputPorts = (int*)malloc(1 * sizeof(int));
-                                                    OutputPorts[0] = 0;
-
-													Task = Task_find_assign_signal_name1;
-												}
-												else
+													MyNumberofIO = SubCircuit.NumberOfInputs + SubCircuit.NumberOfOutputs;
+													CurrentIO = 0;
+													SubCircuitRead = 1;
 													Task = Task_find_module_name;
-
-												MyNumberofIO = Library->CellTypes[CellTypeIndex]->NumberOfInputs + Library->CellTypes[CellTypeIndex]->NumberOfOutputs;
-												CurrentIO = 0;
-												SubCircuitRead = 0;
-											}
-											else
-											{
-												SubCircuit.Signals = NULL;
-												SubCircuit.NumberOfSignals = 0;
-												SubCircuit.Constants = NULL;
-												SubCircuit.NumberOfConstants = 0;
-												SubCircuit.Inputs = NULL;
-												SubCircuit.Outputs = NULL;
-												SubCircuit.NumberOfInputs = 0;
-												SubCircuit.NumberOfOutputs = 0;
-												SubCircuit.Cells = NULL;
-												SubCircuit.NumberOfCells = 0;
-												SubCircuit.Gates = NULL;
-												SubCircuit.Regs = NULL;
-												SubCircuit.NumberOfGates = 0;
-												SubCircuit.NumberOfRegs = 0;
-												SubCircuit.ClockSignalIndex = -1;
-												SubCircuit.ResetSignalIndex = -1;
-												SubCircuit.MaxDepth = 0;
-												SubCircuit.CellsInDepth = NULL;
-												SubCircuit.NumberOfCellsInDepth = NULL;
-												SubCircuit.FreshMasks = NULL;
-												SubCircuit.NumberOfFreshMasks = 0;
-
-                                                if (ReadDesignFile(InputVerilogFileName, Str1, Library, &SubCircuit, NULL, 0,
-                                                                   NumberOfSignalsOffset + Circuit->NumberOfSignals - Circuit->NumberOfConstants,
-                                                                   NumberOfCellsOffset + Circuit->NumberOfCells))
-                                                {
-													printf("\ncell type or module \"%s\" not found\n", Str1);
-													fclose(DesignFile);
-													free(Str1);
-													free(Str2);
-													free(Phrase);
-													free(SubCircuitInstanceName);
-													return 1;
 												}
-
-                                    			TempSignals = (SignalStruct **)malloc((Circuit->NumberOfSignals + SubCircuit.NumberOfSignals - SubCircuit.NumberOfConstants) * sizeof(SignalStruct *));
-			                                    memcpy(TempSignals, Circuit->Signals, Circuit->NumberOfSignals * sizeof(SignalStruct *));
-			                                    free(Circuit->Signals);
-			                                    Circuit->Signals = TempSignals;
-			                                    memcpy(&Circuit->Signals[Circuit->NumberOfSignals], &SubCircuit.Signals[SubCircuit.NumberOfConstants], (SubCircuit.NumberOfSignals - SubCircuit.NumberOfConstants) * sizeof(SignalStruct *));
-                                                Circuit->NumberOfSignals += SubCircuit.NumberOfSignals - SubCircuit.NumberOfConstants;
-
-                                                TempCells = (CellStruct **)malloc((Circuit->NumberOfCells + SubCircuit.NumberOfCells) * sizeof(CellStruct *));
-                                                memcpy(TempCells, Circuit->Cells, Circuit->NumberOfCells * sizeof(CellStruct *));
-                                                free(Circuit->Cells);
-                                                Circuit->Cells = TempCells;
-			                                    memcpy(&Circuit->Cells[Circuit->NumberOfCells], SubCircuit.Cells, SubCircuit.NumberOfCells * sizeof(CellStruct *));
-                                                Circuit->NumberOfCells += SubCircuit.NumberOfCells;
-
-                                                TempGates = (int *)malloc((Circuit->NumberOfGates + SubCircuit.NumberOfGates) * sizeof(int));
-                                                memcpy(TempGates, Circuit->Gates, Circuit->NumberOfGates * sizeof(int));
-                                                free(Circuit->Gates);
-                                                Circuit->Gates = TempGates;
-			                                    memcpy(&Circuit->Gates[Circuit->NumberOfGates], SubCircuit.Gates, SubCircuit.NumberOfGates * sizeof(int));
-                                                Circuit->NumberOfGates += SubCircuit.NumberOfGates;
-
-                                                TempRegs = (int *)malloc((Circuit->NumberOfRegs + SubCircuit.NumberOfRegs) * sizeof(int));
-                                                memcpy(TempRegs, Circuit->Regs, Circuit->NumberOfRegs * sizeof(int));
-                                                free(Circuit->Regs);
-                                                Circuit->Regs = TempRegs;
-			                                    memcpy(&Circuit->Regs[Circuit->NumberOfRegs], SubCircuit.Regs, SubCircuit.NumberOfRegs * sizeof(int));
-                                                Circuit->NumberOfRegs += SubCircuit.NumberOfRegs;
-
-                                                MyNumberofIO = SubCircuit.NumberOfInputs + SubCircuit.NumberOfOutputs;
-                                                CurrentIO = 0;
-                                                SubCircuitRead = 1;
-                                                Task = Task_find_module_name;
 											}
 										}
 										else if (Task == Task_find_module_name)
@@ -2062,7 +2198,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 											(Task == Task_find_assign_signal_name1) ||
 											(Task == Task_find_assign_signal_name2))
 										{
-											if (ReadDesignFile_Find_Signal_Name(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit,
+											if (ReadDesignFile_Find_Signal_Name(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit, Task,
 																				NumberOfSignalsOffset, NumberOfCellsOffset, SubCircuitInstanceName, &SubCircuit,
 																				InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts, CurrentIO))
 											{
@@ -2077,21 +2213,11 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 
 											if (Task == Task_find_assign_signal_name1)
 												if (ch == '=')
-												{
-                                                    NumberOfInputPorts = 1;
-                                                    free(InputPorts);
-                                                    InputPorts = (int*)malloc(1 * sizeof(int));
-                                                    InputPorts[0] = 0;
-                                                    NumberOfOutputPorts = 0;
-                                                    free(OutputPorts);
-                                                    OutputPorts = NULL;
-
 													Task = Task_find_assign_signal_name2;
-												}
 												else
 													Task = Task_find_equal;
 											else if (Task == Task_find_assign_signal_name2)
-												Task = -1; // irelevant
+												Task = -1; // to avoid incrementing NumberOfCells
 											else
 												Task = Task_find_close_bracket;
 										}
@@ -2102,17 +2228,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 									else if (ch == '=')
 									{
 										if (Task == Task_find_equal)
-										{
-											NumberOfInputPorts = 1;
-											free(InputPorts);
-											InputPorts = (int*)malloc(1 * sizeof(int));
-											InputPorts[0] = 0;
-											NumberOfOutputPorts = 0;
-											free(OutputPorts);
-											OutputPorts = NULL;
-
 											Task = Task_find_assign_signal_name2;
-										}
 										else
 										{
 											printf("\n= is placed in a wrong position\n");
@@ -2187,7 +2303,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 									}
 									else if (Task == Task_find_signal_name)
 									{
-										if (ReadDesignFile_Find_Signal_Name(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit,
+										if (ReadDesignFile_Find_Signal_Name(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit, Task,
 																	        NumberOfSignalsOffset, NumberOfCellsOffset, SubCircuitInstanceName, &SubCircuit,
 																	        InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts, CurrentIO))
                                         {
@@ -2221,7 +2337,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 										}
 
 										Str1[0] = 0;
-										if (ReadDesignFile_Find_Signal_Name(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit,
+										if (ReadDesignFile_Find_Signal_Name(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit, Task,
 																	        NumberOfSignalsOffset, NumberOfCellsOffset, SubCircuitInstanceName, &SubCircuit,
 																	        InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts, CurrentIO))
 										{
@@ -2265,7 +2381,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 
 							} while (ch != ';');
 
-                            if (!SubCircuitRead)
+                            if ((!SubCircuitRead) && (Task >= 0))
 								Circuit->NumberOfCells++;
 
 							Str1[0] = 0;
