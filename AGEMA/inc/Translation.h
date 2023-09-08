@@ -39,19 +39,26 @@
 #define Max_Name_Length 500000
 #define Max_Name_Short   10000
 
-#define CellType_Gate     0
-#define CellType_Reg      1
+#define CellType_Gate         0
+#define CellType_Reg          1
 
-#define GateType_Normal   1
-#define GateType_Mux2     2
-#define GateType_Buffer   4
-#define GateType_XOR      8
-#define GateType_SCA     16
+#define GateType_Normal       1
+#define GateType_NOT          2
+#define GateType_Mux2         4
+#define GateType_Buffer       8
+#define GateType_XOR         16
+#define GateType_SCA         32
+#define GateType_LUT         64
+#define GateType_Controller 128
+#define GateType_ANF        256
 
-#define SignalType_input     0
-#define SignalType_output    1
-#define SignalType_wire      2
-#define SignalType_constant  3
+#define SignalType_input      0
+#define SignalType_output     1
+#define SignalType_wire       2
+#define SignalType_constant   3
+
+#define WireType_Controller   1
+#define WireType_Clock        2
 
 #define Task_find_module_type			 0
 #define Task_find_module_name			 1
@@ -65,9 +72,14 @@
 #define Task_find_equal					 9
 #define Task_find_assign_signal_name2	10
 
+#define SynchSignalName           "Synch"
+#define ClockGatingSignalName     "clk_gated"
+#define LibraryClockName          "clk"
+#define LibraryResetName          "rst"
+
 struct CellTypeStruct {
 	char	GateOrReg;
-	char	Type;
+	int		Type;
 	char	NumberOfCases;
 	char**	Cases;
 	int 	NumberOfInputs;
@@ -78,12 +90,15 @@ struct CellTypeStruct {
 	int		SCAType;
 	int		SCAType2;   // for example for MUX2, where the select signal is not secure
 	char*   CustomName; // for the .nl file to generate BDD
+	char*   PrintName;  // for the verilog file and cells with the same name but different generics
+	char*   Generic;  // for the verilog file and cells with the same name but different generics
 };
 
 
 struct CellStruct {
 	int		Type;
 	char*	Name;
+	char*   Generic;
 	short	Depth;
 	int 	NumberOfInputs;
 	int*	Inputs;
@@ -99,6 +114,7 @@ struct SignalStruct {
 	char*	Name;
 	char	FreshMask;
 	char	Type;
+	char    WireType;
 	short	Depth;
 	int		Output;
 	int		NumberOfInputs;
@@ -113,10 +129,11 @@ struct SignalStruct {
 
 struct LibraryStruct {
 	CellTypeStruct**	CellTypes = NULL;
-	int					NumberOfCellTypes   = 0;
-	int					BufferCellType      = -1;
-	int					RegBufferCellType   = -1;
-	int					ClockGatingCellType = -1;
+	int					NumberOfCellTypes          =  0;
+	int					BufferCellType             = -1;
+	int					RegBufferCellType          = -1;
+	int					RegSCABufferCellType       = -1;
+	int					ClockGatingCellType        = -1;
 };
 
 struct CircuitStruct {
@@ -168,13 +185,10 @@ int StrReplaceChar(char *Str, char ch_source, char ch_destination)
 
 void StrReplaceStr(char *Str, char *Source, char *Destination)
 {
-	static char* StrTemp = NULL;
-	char*        ptr;
-	int          L_Source;
-	int          L_Destination;
-
-	if (StrTemp == NULL)
-		StrTemp = (char *)malloc(Max_Name_Length * sizeof(char));
+	char *StrTemp = (char *)malloc(Max_Name_Length * sizeof(char));
+	char *ptr;
+	int   L_Source;
+	int   L_Destination;
 
 	L_Source = strlen(Source);
 	L_Destination = strlen(Destination);
@@ -189,6 +203,8 @@ void StrReplaceStr(char *Str, char *Source, char *Destination)
 
 		ptr = strstr(ptr + L_Destination, Source);
 	}
+
+	free(StrTemp);
 }
 
 //***************************************************************************************
@@ -226,146 +242,148 @@ void ReadNonCommentFromFile(FILE* FileHeader, char* Str, const char* CommentSynt
 
 void fReadaWord(FILE* FileHeader, char* Buffer, char* Attribute)
 {
-    //reset Buffer
+	//reset Buffer
 	memset(Buffer, 0, 10); //Max_Name_Length
 
-    static char Lastch = 0;
-    char        ch = 0;
-    int         i = 0;
-    int         j = 0;
-    char        BracketOpened = 0;
+	static char Lastch = 0;
+	char        ch = 0;
+	int         i = 0;
+	int         j = 0;
+	char        BracketOpened = 0;
 
-    if (Attribute)
-        Attribute[0] = 0;
+	if (Attribute)
+		Attribute[0] = 0;
 
-    while ((!feof(FileHeader)) || Lastch)
-    {
-        if (Lastch)
-            ch = Lastch;
-        else
-            ch = fgetc(FileHeader);
+	while ((!feof(FileHeader)) || Lastch)
+	{
+		if (Lastch)
+			ch = Lastch;
+		else
+			ch = fgetc(FileHeader);
 
-        if ((!feof(FileHeader)) || Lastch)
-        {
-            Lastch = 0;
+		if ((!feof(FileHeader)) || Lastch)
+		{
+			Lastch = 0;
 
-            if ((ch == 32) || (ch == 13) || (ch == 10) || (ch == 9))
-            {
+			if ((ch == 32) || (ch == 13) || (ch == 10) || (ch == 9))
+			{
 				if (i && (!BracketOpened))
 					break;
 			}
-            else if ((ch == '(') || (ch == ')'))
-            {
-                if (i)
-                {
-                    Lastch = ch;
-                    break;
-                }
-                else
-                {
-                    Buffer[i++] = ch;
+			else if ((ch == '(') || (ch == ')'))
+			{
+				if (i)
+				{
+					Lastch = ch;
+					break;
+				}
+				else
+				{
+					Buffer[i++] = ch;
 
-                    if (ch == '(')
-                    {
-                        ch = fgetc(FileHeader);
-                        if (ch == '*')
-                        {
-                            while (!feof(FileHeader))
-                            {
-                                ch = fgetc(FileHeader);
-                                if ((Buffer[i] == '*') && (ch == ')'))
-                                    break;
-                                else
-                                {
-                                    Buffer[i] = ch;
-                                    if (Attribute)
-                                        Attribute[j++] = ch;
-                                }
-                            }
+					if (ch == '(')
+					{
+						ch = fgetc(FileHeader);
+						if (ch == '*')
+						{
+							while (!feof(FileHeader))
+							{
+								ch = fgetc(FileHeader);
+								if ((Buffer[i] == '*') && (ch == ')'))
+									break;
+								else
+								{
+									Buffer[i] = ch;
+									if (Attribute)
+										Attribute[j++] = ch;
+								}
+							}
 
-                            if (!feof(FileHeader))
-                            {
-                                i--;
-                                j--;
-                            }
-                        }
-                        else
-                        {
-                            Lastch = ch;
-                            break;
-                        }
-                    }
-                    else
-                        break;
-                }
-            }
-            else if ((ch == '/') && i)
-            {
-                if (Buffer[i - 1] == '/') // start of the comment "//"
-                {
-                    i--;
-
-                    while (!feof(FileHeader))
-                    {
-                        ch = fgetc(FileHeader);
-                        if ((ch == '\n') || (ch == '\r'))
-                            break;
-                    }
-                }
-            }
-            else if ((ch == '*') && i)
-            {
-                if (Buffer[i - 1] == '/') // start of the comment "/*"
-                {
-                    i--;
-
-                    while (!feof(FileHeader))
-                    {
-                        ch = fgetc(FileHeader);
-                        if ((Buffer[i] == '*') && (ch == '/'))
-                            break;
-                        else
-                            Buffer[i] = ch;
-                    }
-                }
-                else if (Buffer[i - 1] == '(') // start of the attribute "(*"
-                {
-                    i--;
-
-                    while (!feof(FileHeader))
-                    {
-                        ch = fgetc(FileHeader);
-                        if ((Buffer[i] == '*') && (ch == ')'))
-                            break;
-                        else
-                        {
-                            Buffer[i] = ch;
-                            if (Attribute)
-                                Attribute[j++] = ch;
-                        }
-                    }
-
-                    if (!feof(FileHeader))
-                        j--;
-                }
-            }
-            else
-            {
-                Buffer[i++] = ch;
-
-           		if (ch == '{')
-	            	BracketOpened = 1;
-
-	            if (ch == '}')
-	            	BracketOpened = 0;
+							if (!feof(FileHeader))
+							{
+								i--;
+								j--;
+							}
+						}
+						else
+						{
+							Lastch = ch;
+							break;
+						}
+					}
+					else
+						break;
+				}
 			}
-        }
-    }
+			else if ((ch == '/') && i)
+			{
+				if (Buffer[i - 1] == '/') // start of the comment "//"
+				{
+					i--;
 
-    Buffer[i] = 0;
-    if (Attribute)
-        Attribute[j] = 0;
-    return;
+					while (!feof(FileHeader))
+					{
+						ch = fgetc(FileHeader);
+						if ((ch == '\n') || (ch == '\r'))
+							break;
+					}
+				}
+				else
+                	Buffer[i++] = ch;
+			}
+			else if ((ch == '*') && i)
+			{
+				if (Buffer[i - 1] == '/') // start of the comment "/*"
+				{
+					i--;
+
+					while (!feof(FileHeader))
+					{
+						ch = fgetc(FileHeader);
+						if ((Buffer[i] == '*') && (ch == '/'))
+							break;
+						else
+							Buffer[i] = ch;
+					}
+				}
+				else if (Buffer[i - 1] == '(') // start of the attribute "(*"
+				{
+					i--;
+
+					while (!feof(FileHeader))
+					{
+						ch = fgetc(FileHeader);
+						if ((Buffer[i] == '*') && (ch == ')'))
+							break;
+						else
+						{
+							Buffer[i] = ch;
+							if (Attribute)
+								Attribute[j++] = ch;
+						}
+					}
+
+					if (!feof(FileHeader))
+						j--;
+				}
+			}
+			else
+			{
+				Buffer[i++] = ch;
+
+				if (ch == '{')
+					BracketOpened = 1;
+
+				if (ch == '}')
+					BracketOpened = 0;
+			}
+		}
+	}
+
+	Buffer[i] = 0;
+	if (Attribute)
+		Attribute[j] = 0;
+	return;
 }
 
 //***************************************************************************************
@@ -401,6 +419,9 @@ int ReadLibraryFile(char* LibraryFileName, char* LibraryName, char General, Libr
 	char	**Buffer_char;
 	char	LibraryRead = 0;
 	int		LowLatency = 0;
+	char    GateOrReg;
+	char    Type;
+	int     Ignore;
 	CellTypeStruct** TempCellTypes;
 
 	strcpy(LocalLibraryName, LibraryName);
@@ -442,66 +463,77 @@ int ReadLibraryFile(char* LibraryFileName, char* LibraryName, char General, Libr
 
 				while (strcmp(Str1, "Library") && (!feof(LibraryFile)))
 				{
-					TempCellTypes= (CellTypeStruct **)malloc((Library->NumberOfCellTypes+1) * sizeof(CellTypeStruct *));
-					memcpy(TempCellTypes, Library->CellTypes, Library->NumberOfCellTypes * sizeof(CellTypeStruct *));
-					free(Library->CellTypes);
-					Library->CellTypes = TempCellTypes;
-
-					Library->CellTypes[Library->NumberOfCellTypes] = (CellTypeStruct *)malloc(sizeof(CellTypeStruct));
-					Library->CellTypes[Library->NumberOfCellTypes]->SCAType = -1;
-					Library->CellTypes[Library->NumberOfCellTypes]->SCAType2 = -1;
-					Library->CellTypes[Library->NumberOfCellTypes]->Type = 0;
-					Library->CellTypes[Library->NumberOfCellTypes]->CustomName = (char*)calloc(1, sizeof(char));
-
+					Ignore = 0;
+					Type = 0;
 					if (!strcmp(Str1, "Gate"))
 					{
-						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Gate;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_Normal;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Normal;
 					}
 					else if (!strcmp(Str1, "SCAGate"))
 					{
-						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Gate;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_SCA;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_SCA;
 					}
 					else if (!strcmp(Str1, "RegBuffer"))
 					{
 						Library->RegBufferCellType = Library->NumberOfCellTypes;
-						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Gate;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_SCA;
+						GateOrReg = CellType_Gate;
+					}
+					else if (!strcmp(Str1, "RegSCABuffer"))
+					{
+						Library->RegSCABufferCellType = Library->NumberOfCellTypes;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_SCA;
 					}
 					else if (!strcmp(Str1, "SCAReg"))
 					{
-						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Reg;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_SCA;
+						GateOrReg = CellType_Reg;
+						Type |= GateType_SCA;
+					}
+					else if (!strcmp(Str1, "Inverter"))
+					{
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Normal;
+						Type |= GateType_NOT;
 					}
 					else if (!strcmp(Str1, "Buffer"))
 					{
 						Library->BufferCellType = Library->NumberOfCellTypes;
-						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Gate;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_Normal;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_Buffer;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Normal;
+						Type |= GateType_Buffer;
 					}
 					else if (!strcmp(Str1, "XORGate"))
 					{
-						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Gate;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_Normal;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_XOR;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Normal;
+						Type |= GateType_XOR;
 					}
 					else if (!strcmp(Str1, "MUX2Gate"))
 					{
-						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Gate;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_Normal;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_Mux2;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Normal;
+						Type |= GateType_Mux2;
 					}
 					else if (!strcmp(Str1, "Reg"))
 					{
-						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Reg;
-						Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_Normal;
+						GateOrReg = CellType_Reg;
+						Type |= GateType_Normal;
 					}
 					else if (!strcmp(Str1, "ClockGating"))
 					{
 						Library->ClockGatingCellType = Library->NumberOfCellTypes;
-						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Gate;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Controller;
+					}
+					else if (!strcmp(Str1, "LUT"))
+					{
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Normal;
+						Type |= GateType_LUT;
+						if (strcmp(LocalLibraryName, "GHPC"))
+							Ignore = 1;
 					}
 					else
 					{
@@ -513,50 +545,86 @@ int ReadLibraryFile(char* LibraryFileName, char* LibraryName, char General, Libr
 						return 1;
 					}
 
-					ReadNonCommentFromFile(LibraryFile, Str1, "%");
-					Library->CellTypes[Library->NumberOfCellTypes]->NumberOfStages = EvaluateExpression(Str1, SecurityOrder, LowLatency);
-
-					ReadNonCommentFromFile(LibraryFile, Str1, "%");
-					Library->CellTypes[Library->NumberOfCellTypes]->NumberOfCases = atoi(Str1);
-					Library->CellTypes[Library->NumberOfCellTypes]->Cases = (char **)malloc(Library->CellTypes[Library->NumberOfCellTypes]->NumberOfCases * sizeof(char *));
-
-					for (i = 0;i < Library->CellTypes[Library->NumberOfCellTypes]->NumberOfCases;i++)
+					if (!Ignore)
 					{
-						ReadNonCommentFromFile(LibraryFile, Str1, "%");
+						TempCellTypes = (CellTypeStruct **)malloc((Library->NumberOfCellTypes + 1) * sizeof(CellTypeStruct *));
+						memcpy(TempCellTypes, Library->CellTypes, Library->NumberOfCellTypes * sizeof(CellTypeStruct *));
+						free(Library->CellTypes);
+						Library->CellTypes = TempCellTypes;
 
-						for (TempIndex=0;TempIndex< Library->NumberOfCellTypes;TempIndex++)
-							for (j=0;j< Library->CellTypes[TempIndex]->NumberOfCases;j++)
-								if (!strcmp(Library->CellTypes[TempIndex]->Cases[j], Str1))
-								{
-									printf("\ncase \"%s\" repeated in library\n", Str1);
-									fclose(LibraryFile);
-									free(LocalLibraryName);
-									free(Str1);
-									free(Str2);
-									return 1;
-								}
-
-						Library->CellTypes[Library->NumberOfCellTypes]->Cases[i] = (char *)malloc(strlen(Str1) + 1);
-						strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Cases[i], Str1);
+						Library->CellTypes[Library->NumberOfCellTypes] = (CellTypeStruct *)malloc(sizeof(CellTypeStruct));
+						Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = GateOrReg;
+						Library->CellTypes[Library->NumberOfCellTypes]->SCAType = -1;
+						Library->CellTypes[Library->NumberOfCellTypes]->SCAType2 = -1;
+						Library->CellTypes[Library->NumberOfCellTypes]->Type = Type;
+						Library->CellTypes[Library->NumberOfCellTypes]->CustomName = (char*)calloc(1, sizeof(char));
+						Library->CellTypes[Library->NumberOfCellTypes]->PrintName = NULL;
+						Library->CellTypes[Library->NumberOfCellTypes]->Generic = NULL;
 					}
 
-					if ((Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg == CellType_Gate) &&
-						(Library->CellTypes[Library->NumberOfCellTypes]->Type & GateType_Normal))
-					{
-						ReadNonCommentFromFile(LibraryFile, Str1, "%");
-						Library->CellTypes[Library->NumberOfCellTypes]->CustomName = (char *)malloc(strlen(Str1) + 1);
-						strcpy(Library->CellTypes[Library->NumberOfCellTypes]->CustomName, Str1);
-					}
+					ReadNonCommentFromFile(LibraryFile, Str1, "%");
+					if (!Ignore)
+						Library->CellTypes[Library->NumberOfCellTypes]->NumberOfStages = EvaluateExpression(Str1, SecurityOrder, LowLatency);
 
 					ReadNonCommentFromFile(LibraryFile, Str1, "%");
 					Number = atoi(Str1);
-					Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs = 0;
-					Library->CellTypes[Library->NumberOfCellTypes]->Inputs = NULL;
+					if (!Ignore)
+					{
+						Library->CellTypes[Library->NumberOfCellTypes]->NumberOfCases = Number;
+						Library->CellTypes[Library->NumberOfCellTypes]->Cases = (char **)malloc(Number * sizeof(char *));
+					}
 
 					for (i = 0;i < Number;i++)
 					{
 						ReadNonCommentFromFile(LibraryFile, Str1, "%");
-						if (Library->CellTypes[Library->NumberOfCellTypes]->Type & GateType_SCA)
+
+						if (!Ignore)
+						{
+							for (TempIndex = 0;TempIndex < Library->NumberOfCellTypes;TempIndex++)
+								for (j = 0;j < Library->CellTypes[TempIndex]->NumberOfCases;j++)
+									if (!strcmp(Library->CellTypes[TempIndex]->Cases[j], Str1))
+									{
+										printf("\ncase \"%s\" repeated in library\n", Str1);
+										fclose(LibraryFile);
+										free(LocalLibraryName);
+										free(Str1);
+										free(Str2);
+										return 1;
+									}
+
+							Library->CellTypes[Library->NumberOfCellTypes]->Cases[i] = (char *)malloc(strlen(Str1) + 1);
+							strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Cases[i], Str1);
+
+							if (!i)
+							{
+								Library->CellTypes[Library->NumberOfCellTypes]->PrintName = (char *)malloc(strlen(Str1) + 1);
+								strcpy(Library->CellTypes[Library->NumberOfCellTypes]->PrintName, Str1);
+							}
+						}
+					}
+
+					if ((GateOrReg == CellType_Gate) &&	(Type & GateType_Normal))
+					{
+						ReadNonCommentFromFile(LibraryFile, Str1, "%");
+						if (!Ignore)
+						{
+							Library->CellTypes[Library->NumberOfCellTypes]->CustomName = (char *)malloc(strlen(Str1) + 1);
+							strcpy(Library->CellTypes[Library->NumberOfCellTypes]->CustomName, Str1);
+						}
+					}
+
+					ReadNonCommentFromFile(LibraryFile, Str1, "%");
+					Number = atoi(Str1);
+					if (!Ignore)
+					{
+						Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs = 0;
+						Library->CellTypes[Library->NumberOfCellTypes]->Inputs = NULL;
+					}
+
+					for (i = 0;i < Number;i++)
+					{
+						ReadNonCommentFromFile(LibraryFile, Str1, "%");
+						if (Type & GateType_SCA)
 						{
 							ReadNonCommentFromFile(LibraryFile, Str2, "%");
 							Count = EvaluateExpression(Str2, SecurityOrder, LowLatency);
@@ -564,33 +632,40 @@ int ReadLibraryFile(char* LibraryFileName, char* LibraryName, char General, Libr
 						else
 							Count = 1;
 
-						for (j = 0;j < Count;j++)
+						if (!Ignore)
 						{
-							if (Count > 1)
-								sprintf(Str2, "%s[%d]", Str1, j);
-							else
-								strcpy(Str2, Str1);
+							for (j = 0;j < Count;j++)
+							{
 
-							Buffer_char = (char **)malloc((Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs + 1) * sizeof(char *));
-							memcpy(Buffer_char, Library->CellTypes[Library->NumberOfCellTypes]->Inputs, Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs * sizeof(char *));
-							free(Library->CellTypes[Library->NumberOfCellTypes]->Inputs);
-							Library->CellTypes[Library->NumberOfCellTypes]->Inputs = Buffer_char;
+								if (Count > 1)
+									sprintf(Str2, "%s[%d]", Str1, j);
+								else
+									strcpy(Str2, Str1);
 
-							Library->CellTypes[Library->NumberOfCellTypes]->Inputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs] = (char *)malloc(strlen(Str2) + 1);
-							strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Inputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs], Str2);
-							Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs++;
+								Buffer_char = (char **)malloc((Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs + 1) * sizeof(char *));
+								memcpy(Buffer_char, Library->CellTypes[Library->NumberOfCellTypes]->Inputs, Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs * sizeof(char *));
+								free(Library->CellTypes[Library->NumberOfCellTypes]->Inputs);
+								Library->CellTypes[Library->NumberOfCellTypes]->Inputs = Buffer_char;
+
+								Library->CellTypes[Library->NumberOfCellTypes]->Inputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs] = (char *)malloc(strlen(Str2) + 1);
+								strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Inputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs], Str2);
+								Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs++;
+							}
 						}
 					}
 
 					ReadNonCommentFromFile(LibraryFile, Str1, "%");
 					Number = atoi(Str1);
-					Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs = 0;
-					Library->CellTypes[Library->NumberOfCellTypes]->Outputs = NULL;
+					if (!Ignore)
+					{
+						Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs = 0;
+						Library->CellTypes[Library->NumberOfCellTypes]->Outputs = NULL;
+					}
 
 					for (i = 0;i < Number;i++)
 					{
 						ReadNonCommentFromFile(LibraryFile, Str1, "%");
-						if (Library->CellTypes[Library->NumberOfCellTypes]->Type & GateType_SCA)
+						if (Type & GateType_SCA)
 						{
 							ReadNonCommentFromFile(LibraryFile, Str2, "%");
 							Count = EvaluateExpression(Str2, SecurityOrder, LowLatency);
@@ -598,55 +673,36 @@ int ReadLibraryFile(char* LibraryFileName, char* LibraryName, char General, Libr
 						else
 							Count = 1;
 
-						for (j = 0;j < Count;j++)
+						if (!Ignore)
 						{
-							if (Count > 1)
-								sprintf(Str2, "%s[%d]", Str1, j);
-							else
-								strcpy(Str2, Str1);
+							for (j = 0;j < Count;j++)
+							{
+								if (Count > 1)
+									sprintf(Str2, "%s[%d]", Str1, j);
+								else
+									strcpy(Str2, Str1);
 
-							Buffer_char = (char **)malloc((Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs + 1) * sizeof(char *));
-							memcpy(Buffer_char, Library->CellTypes[Library->NumberOfCellTypes]->Outputs, Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs * sizeof(char *));
-							free(Library->CellTypes[Library->NumberOfCellTypes]->Outputs);
-							Library->CellTypes[Library->NumberOfCellTypes]->Outputs = Buffer_char;
+								Buffer_char = (char **)malloc((Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs + 1) * sizeof(char *));
+								memcpy(Buffer_char, Library->CellTypes[Library->NumberOfCellTypes]->Outputs, Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs * sizeof(char *));
+								free(Library->CellTypes[Library->NumberOfCellTypes]->Outputs);
+								Library->CellTypes[Library->NumberOfCellTypes]->Outputs = Buffer_char;
 
-							Library->CellTypes[Library->NumberOfCellTypes]->Outputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs] = (char *)malloc(strlen(Str2) + 1);
-							strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Outputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs], Str2);
-							Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs++;
+								Library->CellTypes[Library->NumberOfCellTypes]->Outputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs] = (char *)malloc(strlen(Str2) + 1);
+								strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Outputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs], Str2);
+								Library->CellTypes[Library->NumberOfCellTypes]->NumberOfOutputs++;
+							}
 						}
 					}
 
-					if (Library->CellTypes[Library->NumberOfCellTypes]->Type & GateType_Normal)
+					if (Type & GateType_Normal)
 					{
 						ReadNonCommentFromFile(LibraryFile, Str1, "%");
 
-						if (General && (Str1[strlen(Str1) - 1] == '_'))
-							strcat(Str1, LocalLibraryName);
-
-						for (i = 0;i < Library->NumberOfCellTypes;i++)
+						if (!Ignore)
 						{
-							for (j = 0;j < Library->CellTypes[i]->NumberOfCases;j++)
-								if (!strcmp(Str1, Library->CellTypes[i]->Cases[j]))
-									break;
-							if (j < Library->CellTypes[i]->NumberOfCases)
-								break;
-						}
+							if (General && (Str1[strlen(Str1) - 1] == '_'))
+								strcat(Str1, LocalLibraryName);
 
-						if (i < Library->NumberOfCellTypes)
-							Library->CellTypes[Library->NumberOfCellTypes]->SCAType = i;
-						else
-						{
-							printf("\nSCAType \"%s\" for cell \"%s\" in library not known\n", Str1, Library->CellTypes[Library->NumberOfCellTypes]->Cases[0]);
-							fclose(LibraryFile);
-							free(LocalLibraryName);
-							free(Str1);
-							free(Str2);
-							return 1;
-						}
-
-						if (Library->CellTypes[Library->NumberOfCellTypes]->Type & GateType_Mux2)
-						{
-							ReadNonCommentFromFile(LibraryFile, Str1, "%");
 							for (i = 0;i < Library->NumberOfCellTypes;i++)
 							{
 								for (j = 0;j < Library->CellTypes[i]->NumberOfCases;j++)
@@ -655,22 +711,73 @@ int ReadLibraryFile(char* LibraryFileName, char* LibraryName, char General, Libr
 								if (j < Library->CellTypes[i]->NumberOfCases)
 									break;
 							}
+						}
 
+						if ((Type & GateType_NOT) ||
+							((GateOrReg == CellType_Reg) && (Type & GateType_Normal)))
+							ReadNonCommentFromFile(LibraryFile, Str1, "%");
+
+						if (!Ignore)
+						{
 							if (i < Library->NumberOfCellTypes)
-								Library->CellTypes[Library->NumberOfCellTypes]->SCAType2 = i;
+								Library->CellTypes[Library->NumberOfCellTypes]->SCAType = i;
 							else
 							{
-								printf("\nSCAType2 \"%s\" for cell \"%s\" in library not known\n", Str1, Library->CellTypes[Library->NumberOfCellTypes]->Cases[0]);
-								fclose(LibraryFile);
-								free(LocalLibraryName);
-								free(Str1);
-								free(Str2);
-								return 1;
+								for (i = 0;i < Library->NumberOfCellTypes;i++)
+								{
+									for (j = 0;j < Library->CellTypes[i]->NumberOfCases;j++)
+										if (!strcmp(Str1, Library->CellTypes[i]->Cases[j]))
+											break;
+									if (j < Library->CellTypes[i]->NumberOfCases)
+										break;
+								}
+
+								if (i < Library->NumberOfCellTypes)
+									Library->CellTypes[Library->NumberOfCellTypes]->SCAType = i;
+								else
+								{
+									printf("\nSCAType \"%s\" for cell \"%s\" in library not known\n", Str1, Library->CellTypes[Library->NumberOfCellTypes]->Cases[0]);
+									fclose(LibraryFile);
+									free(LocalLibraryName);
+									free(Str1);
+									free(Str2);
+									return 1;
+								}
+							}
+						}
+
+						if ((Type & GateType_Mux2) || (Type & GateType_LUT))
+						{
+							ReadNonCommentFromFile(LibraryFile, Str1, "%");
+
+							if (!Ignore)
+							{
+								for (i = 0;i < Library->NumberOfCellTypes;i++)
+								{
+									for (j = 0;j < Library->CellTypes[i]->NumberOfCases;j++)
+										if (!strcmp(Str1, Library->CellTypes[i]->Cases[j]))
+											break;
+									if (j < Library->CellTypes[i]->NumberOfCases)
+										break;
+								}
+
+								if (i < Library->NumberOfCellTypes)
+									Library->CellTypes[Library->NumberOfCellTypes]->SCAType2 = i;
+								else
+								{
+									printf("\nSCAType2 \"%s\" for cell \"%s\" in library not known\n", Str1, Library->CellTypes[Library->NumberOfCellTypes]->Cases[0]);
+									fclose(LibraryFile);
+									free(LocalLibraryName);
+									free(Str1);
+									free(Str2);
+									return 1;
+								}
 							}
 						}
 					}
 
-					Library->NumberOfCellTypes++;
+					if (!Ignore)
+						Library->NumberOfCellTypes++;
 					ReadNonCommentFromFile(LibraryFile, Str1, "%");
 				}
 
@@ -881,7 +988,7 @@ int TrimSignalName(char* SignalName, int* k = NULL)
 
 	if (SignalName[l - 1] == ']')
 	{
-		for (i = l - 2;i >= 0;i--)
+		for (i = l - 2; i >= 0; i--)
 			if (SignalName[i] == '[')
 				break;
 
@@ -913,20 +1020,20 @@ int TrimSignalName(char* SignalName, int* k = NULL)
 //***************************************************************************************
 
 int ReadDesignFile_Find_IO_Port(char* Str1, char SubCircuitRead, int CellTypeIndex, int CaseIndex,
-                                LibraryStruct* Library, CircuitStruct* Circuit, int NumberOfSignalsOffset,
-                                char* SubCircuitInstanceName, CircuitStruct* SubCircuit,
-                                int* &InputPorts, int &NumberOfInputPorts, int* &OutputPorts, int &NumberOfOutputPorts)
+	LibraryStruct* Library, CircuitStruct* Circuit, int NumberOfSignalsOffset,
+	char* SubCircuitInstanceName, CircuitStruct* SubCircuit,
+	int* &InputPorts, int &NumberOfInputPorts, int* &OutputPorts, int &NumberOfOutputPorts)
 {
 	int          SignalIndex;
 	int 		 InputIndex;
 	int 		 OutputIndex;
 	int          TempIndex;
 	int          i;
-    static char* Str2 = NULL;
-    int*         Buffer_int;
+	static char* Str2 = NULL;
+	int*         Buffer_int;
 
- 	if (Str2 == NULL)
- 		Str2 = (char*)malloc(Max_Name_Length * sizeof(char));
+	if (Str2 == NULL)
+		Str2 = (char*)malloc(Max_Name_Length * sizeof(char));
 
 	NumberOfInputPorts = 0;
 	NumberOfOutputPorts = 0;
@@ -1127,10 +1234,10 @@ int ReadDesignFile_Find_IO_Port(char* Str1, char SubCircuitRead, int CellTypeInd
 //***************************************************************************************
 
 int ReadDesignFile_Find_Signal_Name(char* Str1, char SubCircuitRead, int CellTypeIndex, int CaseIndex,
-                                    LibraryStruct* Library, CircuitStruct* Circuit, int Task,
-                                    int NumberOfSignalsOffset, int NumberOfCellsOffset,
-                                    char* SubCircuitInstanceName, CircuitStruct* SubCircuit,
-                                    int* &InputPorts, int &NumberOfInputPorts, int* &OutputPorts, int &NumberOfOutputPorts, int &CurrentIO)
+	LibraryStruct* Library, CircuitStruct* Circuit, int Task,
+	int NumberOfSignalsOffset, int NumberOfCellsOffset,
+	char* SubCircuitInstanceName, CircuitStruct* SubCircuit,
+	int* &InputPorts, int &NumberOfInputPorts, int* &OutputPorts, int &NumberOfOutputPorts, int &CurrentIO)
 {
 	int          SignalIndex;
 	int          SignalIndexWithOffset;
@@ -1142,18 +1249,18 @@ int ReadDesignFile_Find_Signal_Name(char* Str1, char SubCircuitRead, int CellTyp
 	int          InputIndex2;
 	int          OutputIndex2;
 	int          TempIndex;
-    int*         Buffer_int;
-    static char* Str2 = NULL;
-    static char* Str3 = NULL;
-    int          Index1, Index2, IndexUpwards;
-    int          j;
-    CellStruct** TempCells;
-    int*         TempGates;
-    int*         IOSignals = NULL;
-    int          NumberOfIOSignals = 0;
-    char*        strptr;
-    char*        strptr2;
-    char         doneone;
+	int*         Buffer_int;
+	static char* Str2 = NULL;
+	static char* Str3 = NULL;
+	int          Index1, Index2, IndexUpwards;
+	int          j;
+	CellStruct** TempCells;
+	int*         TempGates;
+	int*         IOSignals = NULL;
+	int          NumberOfIOSignals = 0;
+	char*        strptr;
+	char*        strptr2;
+	char         doneone;
 
 	if (Str2 == NULL)
 		Str2 = (char*)malloc(Max_Name_Length * sizeof(char));
@@ -1168,7 +1275,7 @@ int ReadDesignFile_Find_Signal_Name(char* Str1, char SubCircuitRead, int CellTyp
 			strptr++;
 
 		if (strptr[strlen(strptr) - 1] == '}')
-			strptr[strlen(strptr) - 1]  = 0;
+			strptr[strlen(strptr) - 1] = 0;
 
 		strptr[strlen(strptr) + 1] = 0;
 
@@ -1322,10 +1429,10 @@ int ReadDesignFile_Find_Signal_Name(char* Str1, char SubCircuitRead, int CellTyp
 			Circuit->Cells[Circuit->NumberOfCells]->NumberOfStages = Library->CellTypes[CellTypeIndex]->NumberOfStages;
 			Circuit->Cells[Circuit->NumberOfCells]->Deleted = 0;
 
-			for (InputIndex = 0;InputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs; InputIndex++)
+			for (InputIndex = 0; InputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs; InputIndex++)
 				Circuit->Cells[Circuit->NumberOfCells]->Inputs[InputIndex] = -1;
 
-			for (OutputIndex = 0;OutputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs; OutputIndex++)
+			for (OutputIndex = 0; OutputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs; OutputIndex++)
 				Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] = -1;
 
 			//if (Library->CellTypes[CellTypeIndex]->GateOrReg == CellType_Gate)
@@ -1358,9 +1465,9 @@ int ReadDesignFile_Find_Signal_Name(char* Str1, char SubCircuitRead, int CellTyp
 	{
 		if (NumberOfIOSignals != NumberOfInputPorts)
 		{
-				printf("The size of the signal \"%s\" does not match to the connected signal!\n", Str1);
-				free(IOSignals);
-				return 1;
+			printf("The size of the signal \"%s\" does not match to the connected signal!\n", Str1);
+			free(IOSignals);
+			return 1;
 		}
 
 		for (TempIndex = 0; TempIndex < NumberOfIOSignals; TempIndex++)
@@ -1517,8 +1624,8 @@ int AddSignalToConstants(CircuitStruct* Circuit, int SignalIndex)
 //***************************************************************************************
 
 int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
-	               LibraryStruct* Library, CircuitStruct* Circuit, char* AttributeKeyword,	char print = 1,
-	               int NumberOfSignalsOffset = 0, int NumberOfCellsOffset = 0)
+	LibraryStruct* Library, CircuitStruct* Circuit, char* AttributeKeyword, char* Scheme,
+	char print = 1,	int NumberOfSignalsOffset = 0, int NumberOfCellsOffset = 0)
 {
 	FILE*			DesignFile;
 	char			finished;
@@ -1528,13 +1635,13 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	char*			Str1 = (char *)malloc(Max_Name_Short * sizeof(char));
 	char*			Str2 = (char *)malloc(Max_Name_Short * sizeof(char));
 	char			ch;
-	int				i, j;
-    int             MyNumberofIO = 0;
-    int             CurrentIO = 0;
-    int             InputIndex = 0;
-    int             OutputIndex = 0;
+	int				i, j, k;
+	int             MyNumberofIO = 0;
+	int             CurrentIO = 0;
+	int             InputIndex = 0;
+	int             OutputIndex = 0;
 	int				SignalIndex;
-    int             CellIndex;
+	int             CellIndex;
 	int				Index1, Index2, IndexUpwards;
 	SignalStruct**	TempSignals;
 	int*			TempInputs;
@@ -1552,15 +1659,17 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	unsigned char	WithAttributes;
 	CircuitStruct   SubCircuit;
 	char            SubCircuitRead = 0;
-    char*           SubCircuitInstanceName = (char*)malloc(Max_Name_Short * sizeof(char));
-    int*            InputPorts = NULL;
-    int             NumberOfInputPorts = 0;
-    int*            OutputPorts = NULL;
-    int             NumberOfOutputPorts = 0;
+	char*           SubCircuitInstanceName = (char*)malloc(Max_Name_Short * sizeof(char));
+	int*            InputPorts = NULL;
+	int             NumberOfInputPorts = 0;
+	int*            OutputPorts = NULL;
+	int             NumberOfOutputPorts = 0;
 	char*           Phrase = (char *)malloc(Max_Name_Short * sizeof(char));
 	static char*    AttributeText = NULL;
 	char            Task;
 	char            IO_port_found;
+	char            NoOfOpen;
+	char            NoOfClose;
 
 	if (AttributeText == NULL)
 		AttributeText = (char *)malloc(Max_Name_Length * 10 * sizeof(char)); // can be very long
@@ -1568,7 +1677,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	if (print)
 		std::cout << "reading the design file..." << std::flush;
 
-    std::cout << "\"" << MainModuleName << "\"..." << std::flush;
+	std::cout << "\"" << MainModuleName << "\"..." << std::flush;
 
 	WithAttributes = (AttributeKeyword != NULL);
 
@@ -1597,6 +1706,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	Circuit->Signals[0]->Inputs = NULL;
 	Circuit->Signals[0]->Output = -1;
 	Circuit->Signals[0]->ToBeBalanced = 0;
+	Circuit->Signals[0]->WireType = 0;
 	Circuit->Signals[0]->Deleted = 0;
 	Circuit->Signals[0]->Attribute = (char*)calloc(1, sizeof(char));
 	AddSignalToConstants(Circuit, 0);
@@ -1609,6 +1719,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	Circuit->Signals[1]->Inputs = NULL;
 	Circuit->Signals[1]->Output = -1;
 	Circuit->Signals[1]->ToBeBalanced = 0;
+	Circuit->Signals[1]->WireType = 0;
 	Circuit->Signals[1]->Deleted = 0;
 	Circuit->Signals[1]->Attribute = (char*)calloc(1, sizeof(char));
 	AddSignalToConstants(Circuit, 1);
@@ -1621,6 +1732,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	Circuit->Signals[2]->Inputs = NULL;
 	Circuit->Signals[2]->Output = -1;
 	Circuit->Signals[2]->ToBeBalanced = 0;
+	Circuit->Signals[2]->WireType = 0;
 	Circuit->Signals[2]->Deleted = 0;
 	Circuit->Signals[2]->Attribute = (char*)calloc(1, sizeof(char));
 	AddSignalToConstants(Circuit, 2);
@@ -1633,6 +1745,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	Circuit->Signals[3]->Inputs = NULL;
 	Circuit->Signals[3]->Output = -1;
 	Circuit->Signals[3]->ToBeBalanced = 0;
+	Circuit->Signals[3]->WireType = 0;
 	Circuit->Signals[3]->Deleted = 0;
 	Circuit->Signals[3]->Attribute = (char*)calloc(1, sizeof(char));
 	AddSignalToConstants(Circuit, 3);
@@ -1645,6 +1758,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	Circuit->Signals[4]->Inputs = NULL;
 	Circuit->Signals[4]->Output = -1;
 	Circuit->Signals[4]->ToBeBalanced = 0;
+	Circuit->Signals[4]->WireType = 0;
 	Circuit->Signals[4]->Deleted = 0;
 	Circuit->Signals[4]->Attribute = (char*)calloc(1, sizeof(char));
 	AddSignalToConstants(Circuit, 4);
@@ -1657,6 +1771,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	Circuit->Signals[5]->Inputs = NULL;
 	Circuit->Signals[5]->Output = -1;
 	Circuit->Signals[5]->ToBeBalanced = 0;
+	Circuit->Signals[5]->WireType = 0;
 	Circuit->Signals[5]->Deleted = 0;
 	Circuit->Signals[5]->Attribute = (char*)calloc(1, sizeof(char));
 	AddSignalToConstants(Circuit, 5);
@@ -1746,7 +1861,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 								NewAttributeIndex = 0;
 								IndexUpwards = (Index1 < Index2) ? 1 : -1;
 
-								for (j = Index1;((IndexUpwards == 1) && (j <= Index2)) || ((IndexUpwards == -1) && (j >= Index2)); j += IndexUpwards)
+								for (j = Index1; ((IndexUpwards == 1) && (j <= Index2)) || ((IndexUpwards == -1) && (j >= Index2)); j += IndexUpwards)
 								{
 									if (Index1 != -1)
 										sprintf(Str2, "%s[%d]", Str1, j);
@@ -1813,6 +1928,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 										Circuit->Signals[Circuit->NumberOfSignals]->NumberOfInputs = 0;
 										Circuit->Signals[Circuit->NumberOfSignals]->Inputs = NULL;
 										Circuit->Signals[Circuit->NumberOfSignals]->Output = -1;
+										Circuit->Signals[Circuit->NumberOfSignals]->WireType = 0;
 										Circuit->Signals[Circuit->NumberOfSignals]->Deleted = 0;
 
 										SignalIndex = Circuit->NumberOfSignals;
@@ -1833,7 +1949,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 
 										if (NewAttributeIndex < NumberOfNewAttributes)
 										{
-											for (TempAttributeIndex = 0;TempAttributeIndex < NumberOfInputAttributes;TempAttributeIndex++)
+											for (TempAttributeIndex = 0; TempAttributeIndex < NumberOfInputAttributes; TempAttributeIndex++)
 												if (!strcmp(InputAttributes[TempAttributeIndex], NewAttributes[NewAttributeIndex]))
 													break;
 
@@ -1964,12 +2080,12 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 									{
 										if (Task == Task_find_module_type)
 										{
-                                            if (!strcmp(Str1, "assign"))
-                                                if (Library->BufferCellType > -1)
-                                                {
-                                                	CellTypeIndex = Library->BufferCellType;
+											if (!strcmp(Str1, "assign"))
+												if (Library->BufferCellType > -1)
+												{
+													CellTypeIndex = Library->BufferCellType;
 
-                                                	SubCircuitRead = 0;
+													SubCircuitRead = 0;
 													NumberOfInputPorts = 0;
 													free(InputPorts);
 													InputPorts = NULL;
@@ -1977,7 +2093,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 													free(OutputPorts);
 													OutputPorts = NULL;
 
-                                                	Task = Task_find_assign_signal_name1;
+													Task = Task_find_assign_signal_name1;
 												}
 												else
 												{
@@ -1991,9 +2107,9 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 												}
 											else
 											{
-												for (CellTypeIndex = 0;CellTypeIndex < Library->NumberOfCellTypes;CellTypeIndex++)
+												for (CellTypeIndex = 0; CellTypeIndex < Library->NumberOfCellTypes; CellTypeIndex++)
 												{
-													for (CaseIndex = 0;CaseIndex < Library->CellTypes[CellTypeIndex]->NumberOfCases;CaseIndex++)
+													for (CaseIndex = 0; CaseIndex < Library->CellTypes[CellTypeIndex]->NumberOfCases; CaseIndex++)
 														if (!strcmp(Str1, Library->CellTypes[CellTypeIndex]->Cases[CaseIndex]))
 															break;
 
@@ -2017,11 +2133,12 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 													Circuit->Cells[Circuit->NumberOfCells]->OrigType = -1;
 													Circuit->Cells[Circuit->NumberOfCells]->NumberOfStages = Library->CellTypes[CellTypeIndex]->NumberOfStages;
 													Circuit->Cells[Circuit->NumberOfCells]->Deleted = 0;
+													Circuit->Cells[Circuit->NumberOfCells]->Generic = NULL;
 
-													for (InputIndex = 0;InputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs; InputIndex++)
+													for (InputIndex = 0; InputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfInputs; InputIndex++)
 														Circuit->Cells[Circuit->NumberOfCells]->Inputs[InputIndex] = -1;
 
-													for (OutputIndex = 0;OutputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs; OutputIndex++)
+													for (OutputIndex = 0; OutputIndex < Circuit->Cells[Circuit->NumberOfCells]->NumberOfOutputs; OutputIndex++)
 														Circuit->Cells[Circuit->NumberOfCells]->Outputs[OutputIndex] = -1;
 
 													if (Library->CellTypes[CellTypeIndex]->GateOrReg == CellType_Gate)
@@ -2074,11 +2191,15 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 													SubCircuit.FreshMasks = NULL;
 													SubCircuit.NumberOfFreshMasks = 0;
 
-													if (ReadDesignFile(InputVerilogFileName, Str1, Library, &SubCircuit, NULL, 0,
-																	   NumberOfSignalsOffset + Circuit->NumberOfSignals - Circuit->NumberOfConstants,
-																	   NumberOfCellsOffset + Circuit->NumberOfCells))
+													if (ReadDesignFile(InputVerilogFileName, Str1, Library, &SubCircuit, NULL, Scheme, 0,
+														NumberOfSignalsOffset + Circuit->NumberOfSignals - Circuit->NumberOfConstants,
+														NumberOfCellsOffset + Circuit->NumberOfCells))
 													{
-														printf("\ncell type or module \"%s\" not found\n", Str1);
+														if ((strstr(Scheme, "GHPC") != Scheme) && (strstr(Str1, "LUT") == Str1))
+															printf("\ndealing with LUT cell types are only possible with GHPC/GHPCLL scheme\n");
+														else
+															printf("\ncell type or module \"%s\" not found\n", Str1);
+
 														fclose(DesignFile);
 														free(Str1);
 														free(Str2);
@@ -2124,53 +2245,98 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 										}
 										else if (Task == Task_find_module_name)
 										{
-                                            if (!SubCircuitRead)
+											if (Str1[0] == '#') // generic is given for the module
 											{
-	                                            Circuit->Cells[Circuit->NumberOfCells]->Name = (char *)malloc(Max_Name_Short);
-	                                            strcpy(Circuit->Cells[Circuit->NumberOfCells]->Name, Str1);
-											}
-                                            else
-                                            {
-												strcpy(SubCircuitInstanceName, Str1);
+												strcpy(Str1, &Str1[1]); // ignore the # sign
 
-												for (SignalIndex = SubCircuit.NumberOfConstants; SignalIndex < SubCircuit.NumberOfSignals; SignalIndex++)
+												while (Str1[0] != '(')
 												{
-													strcpy(Str1, "\\");
-													strcat(Str1, SubCircuitInstanceName);
-													strcat(Str1, ".");
-													if (SubCircuit.Signals[SignalIndex]->Name[0] == '\\')
-														strcat(Str1, SubCircuit.Signals[SignalIndex]->Name + 1);
+													if (Str1[0] == 0)
+													{
+														Str1[0] = Str2[i++];
+														Str1[1] = 0;
+													}
 													else
-														strcat(Str1, SubCircuit.Signals[SignalIndex]->Name);
-
-													strcpy(SubCircuit.Signals[SignalIndex]->Name, Str1);
+														strcpy(Str1, &Str1[1]);
 												}
 
-												for (CellIndex = 0; CellIndex < SubCircuit.NumberOfCells; CellIndex++)
+												strcpy(Str1, &Str1[1]);
+												j = strlen(Str1);
+
+												NoOfOpen = 1;
+												NoOfClose = 0;
+												k = 0;
+												while (NoOfOpen != NoOfClose)
 												{
-													strcpy(Str1, "\\");
-													strcat(Str1, SubCircuitInstanceName);
-													strcat(Str1, ".");
-													if (SubCircuit.Cells[CellIndex]->Name[0] == '\\')
-														strcat(Str1, SubCircuit.Cells[CellIndex]->Name + 1);
-													else
-														strcat(Str1, SubCircuit.Cells[CellIndex]->Name);
+													if (k == j)
+													{
+														Str1[j++] = Str2[i++];
+														Str1[j] = 0;
+													}
 
-													strcpy(SubCircuit.Cells[CellIndex]->Name, Str1);
+													if (Str1[k] == '(')
+														NoOfOpen++;
+
+													if (Str1[k] == ')')
+														NoOfClose++;
+
+													k++;
 												}
-											}
 
-											Task = Task_find_open_bracket;
-											IO_port_found = 0;
+												Str1[j - 1] = 0;
+												Circuit->Cells[Circuit->NumberOfCells]->Generic = (char *)malloc(strlen(Str1) + 1);
+												strcpy(Circuit->Cells[Circuit->NumberOfCells]->Generic, Str1);
+											}
+											else
+											{
+												if (!SubCircuitRead)
+												{
+													Circuit->Cells[Circuit->NumberOfCells]->Name = (char *)malloc(Max_Name_Short);
+													strcpy(Circuit->Cells[Circuit->NumberOfCells]->Name, Str1);
+												}
+												else
+												{
+													strcpy(SubCircuitInstanceName, Str1);
+
+													for (SignalIndex = SubCircuit.NumberOfConstants; SignalIndex < SubCircuit.NumberOfSignals; SignalIndex++)
+													{
+														strcpy(Str1, "\\");
+														strcat(Str1, SubCircuitInstanceName);
+														strcat(Str1, ".");
+														if (SubCircuit.Signals[SignalIndex]->Name[0] == '\\')
+															strcat(Str1, SubCircuit.Signals[SignalIndex]->Name + 1);
+														else
+															strcat(Str1, SubCircuit.Signals[SignalIndex]->Name);
+
+														strcpy(SubCircuit.Signals[SignalIndex]->Name, Str1);
+													}
+
+													for (CellIndex = 0; CellIndex < SubCircuit.NumberOfCells; CellIndex++)
+													{
+														strcpy(Str1, "\\");
+														strcat(Str1, SubCircuitInstanceName);
+														strcat(Str1, ".");
+														if (SubCircuit.Cells[CellIndex]->Name[0] == '\\')
+															strcat(Str1, SubCircuit.Cells[CellIndex]->Name + 1);
+														else
+															strcat(Str1, SubCircuit.Cells[CellIndex]->Name);
+
+														strcpy(SubCircuit.Cells[CellIndex]->Name, Str1);
+													}
+												}
+
+												Task = Task_find_open_bracket;
+												IO_port_found = 0;
+											}
 										}
 										else if (Task == Task_find_IO_port)
 										{
 											if (Str1[0] == '.')
 											{
 												if (ReadDesignFile_Find_IO_Port(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit, NumberOfSignalsOffset,
-																				SubCircuitInstanceName, &SubCircuit,
-																				InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts))
-                                                {
+													SubCircuitInstanceName, &SubCircuit,
+													InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts))
+												{
 													printf("\nIO port \"%s\" not found in cell type \"%s\"\n", Str1 + 1, Library->CellTypes[CellTypeIndex]->Cases[CaseIndex]);
 													fclose(DesignFile);
 													free(Str1);
@@ -2180,8 +2346,8 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 													return 1;
 												}
 
-                                                IO_port_found = 1;
-                                                Task = Task_find_open_bracket;
+												IO_port_found = 1;
+												Task = Task_find_open_bracket;
 											}
 											else
 											{
@@ -2199,8 +2365,8 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 											(Task == Task_find_assign_signal_name2))
 										{
 											if (ReadDesignFile_Find_Signal_Name(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit, Task,
-																				NumberOfSignalsOffset, NumberOfCellsOffset, SubCircuitInstanceName, &SubCircuit,
-																				InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts, CurrentIO))
+												NumberOfSignalsOffset, NumberOfCellsOffset, SubCircuitInstanceName, &SubCircuit,
+												InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts, CurrentIO))
 											{
 												printf("\nsignal \"%s\" not found\n", Str1);
 												fclose(DesignFile);
@@ -2255,9 +2421,9 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 										if (Str1[0] == '.')
 										{
 											if (ReadDesignFile_Find_IO_Port(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit, NumberOfSignalsOffset,
-																			SubCircuitInstanceName, &SubCircuit,
-																			InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts))
-                                            {
+												SubCircuitInstanceName, &SubCircuit,
+												InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts))
+											{
 												printf("\nIO port \"%s\" did not found in cell type \"%s\"\n", Str1 + 1, Library->CellTypes[CellTypeIndex]->Cases[0]);
 												fclose(DesignFile);
 												free(Str1);
@@ -2304,9 +2470,9 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 									else if (Task == Task_find_signal_name)
 									{
 										if (ReadDesignFile_Find_Signal_Name(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit, Task,
-																	        NumberOfSignalsOffset, NumberOfCellsOffset, SubCircuitInstanceName, &SubCircuit,
-																	        InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts, CurrentIO))
-                                        {
+											NumberOfSignalsOffset, NumberOfCellsOffset, SubCircuitInstanceName, &SubCircuit,
+											InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts, CurrentIO))
+										{
 											printf("\nsignal \"%s\" not found\n", Str1);
 											fclose(DesignFile);
 											free(Str1);
@@ -2321,12 +2487,12 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 										else
 											Task = Task_find_close_bracket;
 									}
-                                    else if (Task == Task_find_comma)
-                                    {
+									else if (Task == Task_find_comma)
+									{
 										Str1[0] = 0;
 										if (ReadDesignFile_Find_IO_Port(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit, NumberOfSignalsOffset,
-											 					        SubCircuitInstanceName, &SubCircuit,
-																        InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts))
+											SubCircuitInstanceName, &SubCircuit,
+											InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts))
 										{
 											fclose(DesignFile);
 											free(Str1);
@@ -2338,8 +2504,8 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 
 										Str1[0] = 0;
 										if (ReadDesignFile_Find_Signal_Name(Str1, SubCircuitRead, CellTypeIndex, CaseIndex, Library, Circuit, Task,
-																	        NumberOfSignalsOffset, NumberOfCellsOffset, SubCircuitInstanceName, &SubCircuit,
-																	        InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts, CurrentIO))
+											NumberOfSignalsOffset, NumberOfCellsOffset, SubCircuitInstanceName, &SubCircuit,
+											InputPorts, NumberOfInputPorts, OutputPorts, NumberOfOutputPorts, CurrentIO))
 										{
 											fclose(DesignFile);
 											free(Str1);
@@ -2365,7 +2531,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 									j = 0;
 									Str1[0] = 0;
 								}
-                                else if ((ch == ',') && (Str1[0] != '{'))
+								else if ((ch == ',') && (Str1[0] != '{'))
 								{
 									IO_port_found = 0;
 									Task = Task_find_IO_port;
@@ -2381,7 +2547,7 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 
 							} while (ch != ';');
 
-                            if ((!SubCircuitRead) && (Task >= 0))
+							if ((!SubCircuitRead) && (Task >= 0))
 								Circuit->NumberOfCells++;
 
 							Str1[0] = 0;
@@ -2419,6 +2585,19 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 }
 
 //***************************************************************************************
+
+void CorrectSignalName(char* SignalName)
+{
+	int   i;
+
+	if (SignalName[0] == '\\')
+	{
+		i = TrimSignalName(SignalName);
+		strcat(SignalName, " ");
+		if (i >= 0)
+			sprintf(SignalName, "%s[%d]", SignalName, i);
+	}
+}
 
 int MakeCircuitDepth(LibraryStruct* Library, CircuitStruct* Circuit)
 {
@@ -2565,10 +2744,7 @@ int AddSignal(CircuitStruct* Circuit, char* Name)
 	int            SignalIndex;
 	int            NewSignalIndex;
 	SignalStruct** TempSignals;
-	static char*   Str = NULL;
-
-	if (Str == NULL)
-		Str = (char *)malloc(Max_Name_Length * sizeof(char));
+	char*          Str = (char *)malloc(Max_Name_Length * sizeof(char));
 
 	TempSignals = (SignalStruct **)malloc((Circuit->NumberOfSignals + 1) * sizeof(SignalStruct *));
 	memcpy(TempSignals, Circuit->Signals, Circuit->NumberOfSignals * sizeof(SignalStruct *));
@@ -2603,11 +2779,14 @@ int AddSignal(CircuitStruct* Circuit, char* Name)
 	Circuit->Signals[NewSignalIndex]->Inputs = NULL;
 	Circuit->Signals[NewSignalIndex]->FreshMask = 0;
 	Circuit->Signals[NewSignalIndex]->Depth = -1;
+	Circuit->Signals[NewSignalIndex]->ToBeSecured = 0;
 	Circuit->Signals[NewSignalIndex]->ToBeBalanced = 1;
 	Circuit->Signals[NewSignalIndex]->Attribute = (char*)calloc(1, sizeof(char));
+	Circuit->Signals[NewSignalIndex]->WireType = 0;
 	Circuit->Signals[NewSignalIndex]->Deleted = 0;
 	Circuit->NumberOfSignals++;
 
+	free(Str);
 	return(NewSignalIndex);
 }
 
@@ -2620,10 +2799,7 @@ int AddCell(LibraryStruct* Library, CircuitStruct* Circuit, char* Name, int Cell
 	int*		   TempRegs;
 	int            InputIndex;
 	int            OutputIndex;
-	static char*   Str = NULL;
-
-	if (Str == NULL)
-		Str = (char *)malloc(Max_Name_Length * sizeof(char));
+	char*          Str = (char *)malloc(Max_Name_Length * sizeof(char));
 
 	TempCells = (CellStruct **)malloc((Circuit->NumberOfCells + 1) * sizeof(CellStruct *));
 	memcpy(TempCells, Circuit->Cells, Circuit->NumberOfCells * sizeof(CellStruct *));
@@ -2644,6 +2820,7 @@ int AddCell(LibraryStruct* Library, CircuitStruct* Circuit, char* Name, int Cell
 	Circuit->Cells[NewCellIndex]->Deleted = 0;
 	Circuit->Cells[NewCellIndex]->OrigType = -1;
 	Circuit->Cells[NewCellIndex]->Depth = -1;
+	Circuit->Cells[NewCellIndex]->Generic = NULL;
 	Circuit->Cells[NewCellIndex]->NumberOfStages = Library->CellTypes[CellType]->NumberOfStages;
 
 	if (Name[0])
@@ -2665,6 +2842,8 @@ int AddCell(LibraryStruct* Library, CircuitStruct* Circuit, char* Name, int Cell
 		{
 			if (CellType == Library->RegBufferCellType)
 				sprintf(Str, "new_%s_reg_buffer_%d", ToolName, NewCellIndex);
+			else if (CellType == Library->RegSCABufferCellType)
+				sprintf(Str, "new_%s_reg_sca_buffer_%d", ToolName, NewCellIndex);
 			else if (CellType == Library->BufferCellType)
 				sprintf(Str, "new_%s_buffer_%d", ToolName, NewCellIndex);
 			else
@@ -2698,6 +2877,7 @@ int AddCell(LibraryStruct* Library, CircuitStruct* Circuit, char* Name, int Cell
 		Circuit->NumberOfRegs++;
 	}
 
+	free(Str);
 	return(NewCellIndex);
 }
 
@@ -3046,11 +3226,15 @@ int AddBuffer(int TargetSignalIndex, int TargetDepthIndex, LibraryStruct* Librar
 
 	if (Reged)
 	{
-		NewCellIndex = AddCell(Library, Circuit, (char*)"", Library->RegBufferCellType);
+		if (Circuit->Signals[TargetSignalIndex]->ToBeSecured)
+			NewCellIndex = AddCell(Library, Circuit, (char*)"", Library->RegSCABufferCellType);
+		else
+			NewCellIndex = AddCell(Library, Circuit, (char*)"", Library->RegBufferCellType);
+
 		Circuit->Cells[NewCellIndex]->Inputs[0] = Circuit->ClockSignalIndex;
 		Circuit->Cells[NewCellIndex]->Inputs[1] = TargetSignalIndex;
 		Circuit->Cells[NewCellIndex]->Outputs[0] = Circuit->NumberOfSignals;
-		Circuit->Cells[NewCellIndex]->Depth = Circuit->Signals[TargetSignalIndex]->Depth + Library->CellTypes[Library->RegBufferCellType]->NumberOfStages;
+		Circuit->Cells[NewCellIndex]->Depth = Circuit->Signals[TargetSignalIndex]->Depth + Library->CellTypes[Circuit->Cells[NewCellIndex]->Type]->NumberOfStages;
 	}
 	else
 	{
@@ -3074,6 +3258,7 @@ int AddBuffer(int TargetSignalIndex, int TargetDepthIndex, LibraryStruct* Librar
 	NewSignalIndex = AddSignal(Circuit, (char*)"");
 	Circuit->Signals[NewSignalIndex]->Output = NewCellIndex;
 	Circuit->Signals[NewSignalIndex]->Depth = Circuit->Cells[NewCellIndex]->Depth;
+	Circuit->Signals[NewSignalIndex]->ToBeSecured = Circuit->Signals[TargetSignalIndex]->ToBeSecured;
 
 	for (InputIndex = 0;InputIndex < Circuit->Signals[TargetSignalIndex]->NumberOfInputs;InputIndex++)
 	{
@@ -3116,43 +3301,32 @@ int AddBuffer(int TargetSignalIndex, int TargetDepthIndex, LibraryStruct* Librar
 	return (NumberOfAdded);
 }
 
-int ChangeRegistersClock(CircuitStruct* Circuit)
+void ChangeRegistersClock(CircuitStruct* Circuit, int NewClockIndex)
 {
-	int            NewSignalIndex;
-	int            RegIndex;
-	int            InputIndex;
-
-	NewSignalIndex = AddSignal(Circuit, (char*)"clk_gated");
+	int  RegIndex;
+	int  InputIndex;
+	int  CellIndex;
 
 	for (RegIndex = 0;RegIndex < Circuit->NumberOfRegs;RegIndex++)
 	{
-		for (InputIndex = 0;InputIndex < Circuit->Signals[Circuit->ClockSignalIndex]->NumberOfInputs;InputIndex++)
+		CellIndex = Circuit->Regs[RegIndex];
+		for (InputIndex = 0;InputIndex < Circuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
 		{
-			if (Circuit->Signals[Circuit->ClockSignalIndex]->Inputs[InputIndex] == Circuit->Regs[RegIndex])
+			if (Circuit->Cells[CellIndex]->Inputs[InputIndex] == Circuit->ClockSignalIndex)
 			{
-				AddCellToSignalInputList(Circuit, NewSignalIndex, Circuit->Regs[RegIndex]);
-				Circuit->Cells[Circuit->Regs[RegIndex]]->Inputs[0] = NewSignalIndex;
-
-				RemoveCellFromSignalInputList(Circuit, Circuit->ClockSignalIndex, InputIndex, -1);
-				break;
+				Circuit->Cells[CellIndex]->Inputs[InputIndex] = NewClockIndex;
+				AddCellToSignalInputList(Circuit, NewClockIndex, CellIndex);
+				RemoveCellFromSignalInputList(Circuit, Circuit->ClockSignalIndex, -1, CellIndex);
 			}
 		}
 	}
-
-	return (NewSignalIndex);
 }
 
 void AddShareIndexToSignalName(CircuitStruct* Circuit, int SignalIndex, char* SignalName, char d)
 {
-	static char*  Str1 = NULL;
-	static char*  Str2 = NULL;
-	uint32_t      j, k;
-
-	if (Str1 == NULL)
-		Str1 = (char *)malloc(Max_Name_Length * sizeof(char));
-
-	if (Str2 == NULL)
-		Str2 = (char *)malloc(Max_Name_Length * sizeof(char));
+	char*	 Str1 = (char *)malloc(Max_Name_Length * sizeof(char));
+	char*	 Str2 = (char *)malloc(Max_Name_Length * sizeof(char));
+	uint32_t j, k;
 
 	strcpy(Str1, SignalName);
 	k = 0;
@@ -3175,41 +3349,270 @@ void AddShareIndexToSignalName(CircuitStruct* Circuit, int SignalIndex, char* Si
 	free(Circuit->Signals[SignalIndex]->Name);
 	Circuit->Signals[SignalIndex]->Name = (char*)malloc((strlen(Str1) + 1) * sizeof(char));
 	strcpy(Circuit->Signals[SignalIndex]->Name, Str1);
+
+	free(Str1);
+	free(Str2);
+}
+
+int CheckTableLinear(char Table[64], int size)
+{
+	int i, k, l;
+	int NoOfEqual;
+	int res;
+
+	res = 1;
+	k = log2(size);
+	for (i = 0;i < k;i++)
+	{
+		NoOfEqual = 0;
+		for (l = 0;l < size;l++)
+			NoOfEqual += (Table[l] == Table[l ^ (1 << i)]);
+
+		if ((NoOfEqual != 0) && (NoOfEqual != size))
+		{
+			res = 0;
+			break;
+		}
+	}
+
+	return(res);
+}
+
+char HW[256] = { 1 };
+char BitPosition[256][8] = { -1 };
+
+void Fill_HW()
+{
+	short i, j;
+
+	if (HW[0])
+		for (i = 0;i < 256;i++)
+		{
+			HW[i] = 0;
+			for (j = 0;j < 8;j++)
+				if (i & (1 << j))
+				{
+					BitPosition[i][HW[i]] = j;
+					HW[i]++;
+				}
+		}
+}
+
+int CheckTable(char Table[64], int size, char* InsecureInputs, char InvTable[64])
+{
+	int  mask;
+	int  maskvalue;
+	int  max_maskvalue;
+	int  adjusted_maskvalue;
+	int  i, j, k;
+	char SmallTable[64];
+
+	Fill_HW();
+	k = log2(size);
+
+	mask = 0;
+	for (i = 0;i < k;i++)
+		if (InsecureInputs[i])
+			mask |= (1 << i);
+
+	max_maskvalue = 1 << HW[mask];
+	for (maskvalue = 0;maskvalue < max_maskvalue;maskvalue++)
+	{
+		adjusted_maskvalue = 0;
+		for (i = 0;i < HW[mask];i++)
+			if (maskvalue & (1 << i))
+				adjusted_maskvalue |= (1 << BitPosition[mask][i]);
+
+		j = 0;
+		for (i = 0;i < size;i++)
+			if ((mask & i) == adjusted_maskvalue)
+			{
+				SmallTable[j++] = Table[i];
+				InvTable[i] = Table[i] ^ SmallTable[0];
+			}
+
+		if (!CheckTableLinear(SmallTable, j))
+			return(0);
+	}
+
+	return(1);
+}
+
+int LUTIsLinear(char* Generic, char* InsecureInputs, char* InvTable)
+{
+	int       IsLinear;
+	char*	  Str1 = (char *)malloc(Max_Name_Length * sizeof(char));
+	char*	  Str2 = (char *)malloc(Max_Name_Length * sizeof(char));
+	char*     ptr;
+	int       Length;
+	char      hex;
+	char      dec;
+	int       i, j, k, v, l;
+	char	  Table[64];
+	long long longv;
+	char*     tmptr;
+
+	IsLinear = 0;
+	ptr = strstr(Generic, "INIT");
+	if (ptr != NULL)
+	{
+		strcpy(Str1, ptr + 4);
+		ptr = strchr(Str1, '(');
+		if (ptr != NULL)
+		{
+			strcpy(Str1, ptr + 1);
+			ptr=strchr(Str1, '\'');
+			if (ptr != NULL)
+			{
+				strcpy(Str2, ptr + 2);
+				*ptr = 0;
+				if ((ptr[1] == 'h') || (ptr[1] == 'H') || (ptr[1] == 'b') || (ptr[1] == 'B') || (ptr[1] == 'd') || (ptr[1] == 'D'))
+				{
+					hex = ((ptr[1] == 'h') || (ptr[1] == 'H'));
+					dec = ((ptr[1] == 'd') || (ptr[1] == 'D'));
+					Length = atoi(Str1);
+					if ((Length == 4) || (Length == 8) || (Length == 16) || (Length == 32) || (Length == 64))
+					{
+						ptr = strchr(Str2, ')');
+						if (ptr != NULL)
+						{
+							*ptr = 0;
+							ptr = strchr(Str2, ' ');
+							if (ptr != NULL)
+								*ptr = 0;
+
+							if (dec == 1)
+							{
+								longv= strtoll(Str2, &tmptr, 10);
+								if (!(*tmptr))
+								{
+									for (j = 0;j < Length;j++)
+									{
+										Table[j] = longv & 1;
+										longv >>= 1;
+									}
+
+									k = 1;
+								}
+								else
+									k = 0;
+							}
+							else
+							{
+								k = strlen(Str2);
+								if (k == (Length / (1 + hex * 3)))
+								{
+									Str1[1] = 0;
+									j = 0;
+									for (i = k - 1;i >= 0;i--)
+									{
+										Str1[0] = Str2[i];
+										v = stoi(Str1, NULL, 16);
+										for (l = 0;l < (1 + 3 * hex);l++)
+										{
+											Table[j++] = (v & 1);
+											v >>= 1;
+										}
+									}
+								}
+								else
+									k = 0;
+							}
+
+							if (k)
+							{
+								// table is made, j is its size
+								IsLinear = CheckTable(Table, j, InsecureInputs, InvTable);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	free(Str1);
+	free(Str2);
+	return (IsLinear);
 }
 
 
-int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellIndex, char SecurityOrder)
+int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellIndex, char SecurityOrder, char* Scheme)
 {
-	int		     OrignalType;
-	int		     i;
-	int		     SignalIndex;
-	int		     NewSignalIndex;
-	static char* Str = NULL;
-	static char* SignalName = NULL;
-	int*         Buffer_Int;
-	char	     d;
-	char    	 MUX2_UnsecureSelect;
-
-	if (Str == NULL)
-		Str = (char *)malloc(Max_Name_Length * sizeof(char));
-
-	if (SignalName == NULL)
-		SignalName = (char *)malloc(Max_Name_Length * sizeof(char));
+	int		OrignalType;
+	int		i, j;
+	int		SignalIndex;
+	int     OriginalSignalIndex;
+	int		NewSignalIndex;
+	int		NewSignalIndex2;
+	char*	Str1 = (char *)malloc(Max_Name_Length * sizeof(char));
+	char*	Str2 = (char *)malloc(Max_Name_Length * sizeof(char));
+	int*    Buffer_Int;
+	char	d;
+	char*   SignalName = (char *)malloc(Max_Name_Length * sizeof(char));
+	char	MUX2_UnsecureSelect;
+	char    DoNormalAfterwards;
+	char    InsecureInputs[10] = { 0 };
+	char    InvTable[64];
+	char    ANF;
+	int     size;
+	int     value;
+	int     NewCellIndex;
 
 	OrignalType = Circuit->Cells[CellIndex]->Type;
 	Circuit->Cells[CellIndex]->OrigType = OrignalType;
+	MUX2_UnsecureSelect = 0;
+
+	ANF = (Library->CellTypes[OrignalType]->Type & GateType_ANF) ? 1:0;
 
 	if ((Library->CellTypes[OrignalType]->Type & GateType_Mux2) &&
-		(!Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[0]]->ToBeSecured))
+		(!Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[0]]->ToBeSecured) &&
+		(Library->CellTypes[OrignalType]->SCAType2 != -1))
 	{
 		MUX2_UnsecureSelect = 1;
 		Circuit->Cells[CellIndex]->Type = Library->CellTypes[OrignalType]->SCAType2;   // select MUX2 with unsecure select signal
 	}
-	else
+	else if (Library->CellTypes[OrignalType]->Type & GateType_LUT)
 	{
-		MUX2_UnsecureSelect = 0;
-		Circuit->Cells[CellIndex]->Type = Library->CellTypes[OrignalType]->SCAType;
+		for (i = 0;i < Circuit->Cells[CellIndex]->NumberOfInputs; i++)
+			InsecureInputs[i] = !Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[i]]->ToBeSecured;
+
+		if (LUTIsLinear(Circuit->Cells[CellIndex]->Generic, InsecureInputs, InvTable))
+		{
+			sprintf(Str1, "%s, .MASK ( %d'b", Circuit->Cells[CellIndex]->Generic, Circuit->Cells[CellIndex]->NumberOfInputs);
+			for (i = Circuit->Cells[CellIndex]->NumberOfInputs - 1; i >= 0; i--)
+				if (InsecureInputs[i])
+					strcat(Str1, "1");
+				else
+					strcat(Str1, "0");
+
+			size = 1 << Circuit->Cells[CellIndex]->NumberOfInputs;
+			sprintf(Str2, " ), .INIT2 ( %d'h", size);
+			strcat(Str1, Str2);
+			for (i = size - 1; i >= 0; i -= 4)
+			{
+				Str2[0] = '0' + InvTable[i + 0];
+				Str2[1] = '0' + InvTable[i - 1];
+				Str2[2] = '0' + InvTable[i - 2];
+				Str2[3] = '0' + InvTable[i - 3];
+				Str2[4] = 0;
+				value = stoi(Str2, NULL, 2);
+				sprintf(Str2, "%X", value);
+				strcat(Str1, Str2);
+			}
+			strcat(Str1, " ) ");
+
+			free(Circuit->Cells[CellIndex]->Generic);
+			Circuit->Cells[CellIndex]->Generic = (char*)malloc((strlen(Str1) + 1) * sizeof(char));
+			strcpy(Circuit->Cells[CellIndex]->Generic, Str1);
+
+			Circuit->Cells[CellIndex]->Type = Library->CellTypes[OrignalType]->SCAType2;   // select masked LUT which does not need to be replaced by GHPC variant
+		}
+		else
+			Circuit->Cells[CellIndex]->Type = Library->CellTypes[OrignalType]->SCAType;
 	}
+	else
+		Circuit->Cells[CellIndex]->Type = Library->CellTypes[OrignalType]->SCAType;
 
 	Circuit->Cells[CellIndex]->NumberOfStages = Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfStages;
 
@@ -3220,13 +3623,24 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 	Circuit->Cells[CellIndex]->Inputs = NULL;
 	Circuit->Cells[CellIndex]->NumberOfInputs = 0;
 
+	DoNormalAfterwards = 0;
 	for (i = 0;i < Library->CellTypes[OrignalType]->NumberOfInputs;i++)
 	{
-		SignalIndex = Buffer_Int[i];
-		AddSignalToCellInputList(Circuit, SignalIndex, CellIndex, -1);
+		strcpy(Str1, Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs]);
+		TrimSignalName(Str1);
 
-		if ((SignalIndex != Circuit->ClockSignalIndex) && // && (SignalIndex != Circuit->ResetSignalIndex))
-			((!MUX2_UnsecureSelect) || i))
+		SignalIndex = Buffer_Int[i];
+		if (SignalIndex == Circuit->ClockSignalIndex) // || (SignalIndex == Circuit->ResetSignalIndex))
+		{
+			DoNormalAfterwards = 1;
+			AddSignalToCellInputList(Circuit, SignalIndex, CellIndex, -1);
+		}
+		else
+			AddSignalToCellInputList(Circuit, SignalIndex, CellIndex, -1);
+
+		if ((!DoNormalAfterwards))
+			//&&
+			//((!MUX2_UnsecureSelect) || i))
 		{
 			strcpy(SignalName, Circuit->Signals[SignalIndex]->Name);
 			NewSignalIndex = Circuit->Signals[SignalIndex]->NextShare;
@@ -3235,8 +3649,19 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 				(Circuit->Signals[SignalIndex]->Type == SignalType_input))
 				AddShareIndexToSignalName(Circuit, SignalIndex, SignalName, 0);
 
+			OriginalSignalIndex = SignalIndex;
+			j = 1;
 			for (d = 1;d <= SecurityOrder;d++)
 			{
+				if (Circuit->Cells[CellIndex]->NumberOfInputs == Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs)
+					break;
+
+				strcpy(Str2, Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs]);
+				TrimSignalName(Str2);
+
+				if ((!ANF) && strcmp(Str1, Str2))
+					break;
+
 				if (NewSignalIndex == -1)
 					if (Circuit->Signals[SignalIndex]->ToBeSecured)
 					{
@@ -3245,15 +3670,18 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 						Circuit->Signals[NewSignalIndex]->NextShare = -1;
 						Circuit->Signals[NewSignalIndex]->ToBeSecured = 1;
 
-						if (Circuit->Signals[SignalIndex]->Type == SignalType_input)
+						if (Circuit->Signals[OriginalSignalIndex]->Type == SignalType_input)
 						{
-							AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, d);
+							AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
 							AddSignalToInputs(Circuit, NewSignalIndex);
+							j++;
 						}
-						if (Circuit->Signals[SignalIndex]->Type == SignalType_output)
+						else
+						if (Circuit->Signals[OriginalSignalIndex]->Type == SignalType_output)
 						{
-							AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, d);
+							AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
 							AddSignalToOutputs(Circuit, NewSignalIndex);
+							j++;
 						}
 					}
 					else
@@ -3271,17 +3699,18 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 	free(Buffer_Int);
 
 	//--------------------------------------------------------------------
+
 	// adding the clock signal to the signals of the cell
 
 	if ((Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs > Circuit->Cells[CellIndex]->NumberOfInputs) &&
-		(!strcmp(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs], "clk")))
+		(!strcmp(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs], LibraryClockName)))
 	{
 		AddSignalToCellInputList(Circuit, Circuit->ClockSignalIndex, CellIndex, -1);
 		AddCellToSignalInputList(Circuit, Circuit->ClockSignalIndex, CellIndex);
 	}
 
 	//--------------------------------------------------------------------
-	// turning the outputs to (SecurityOrder + 1) * inputs
+	// turning the outputs to (SecurityOrder + 1) * outputs
 
 	Buffer_Int = Circuit->Cells[CellIndex]->Outputs;
 	Circuit->Cells[CellIndex]->Outputs = NULL;
@@ -3292,26 +3721,29 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 		SignalIndex = Buffer_Int[i];
 		AddSignalToCellOutputList(Circuit, SignalIndex, CellIndex);
 
+		OriginalSignalIndex = SignalIndex;
 		if (SignalIndex != -1)
 		{
 			strcpy(SignalName, Circuit->Signals[SignalIndex]->Name);
 			if (Circuit->Signals[SignalIndex]->Type == SignalType_output)
 				AddShareIndexToSignalName(Circuit, SignalIndex, SignalName, 0);
 
+			j = 1;
 			NewSignalIndex = Circuit->Signals[SignalIndex]->NextShare;
-
-			for (d = 1;d <= SecurityOrder;d++)
+			for (d = 1; d <= SecurityOrder; d++)
 			{
 				if (NewSignalIndex == -1)
 				{
 					NewSignalIndex = AddSignal(Circuit, (char*)"");
 					Circuit->Signals[SignalIndex]->NextShare = NewSignalIndex;
 					Circuit->Signals[NewSignalIndex]->NextShare = -1;
+					Circuit->Signals[NewSignalIndex]->ToBeSecured = 1;
 
-					if (Circuit->Signals[SignalIndex]->Type == SignalType_output)
+					if (Circuit->Signals[OriginalSignalIndex]->Type == SignalType_output)
 					{
-						AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, d);
+						AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
 						AddSignalToOutputs(Circuit, NewSignalIndex);
+						j++;
 					}
 				}
 
@@ -3328,19 +3760,20 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 	}
 
 	free(Buffer_Int);
+
+	free(Str1);
+	free(Str2);
+	free(SignalName);
 	return(1);
 }
 
 void AddFreshtoSCACell(CircuitStruct* Circuit, LibraryStruct* Library, int CellIndex, char SecurityOrder, char* Scheme)
 {
-	int		     i;
-	int		     NewSignalIndex;
-	static char* Str = NULL;
-	int*         Buffer_Int;
-	int          NumberOfSharedFreshMasks;
-
-	if (Str == NULL)
-		Str = (char *)malloc(Max_Name_Length * sizeof(char));
+	int		i;
+	int		NewSignalIndex;
+	char*	Str = (char *)malloc(Max_Name_Length * sizeof(char));
+	int*    Buffer_Int;
+	int     NumberOfSharedFreshMasks;
 
 	if (!strcmp(Scheme, "COMAR"))
 		NumberOfSharedFreshMasks = 6;
@@ -3391,6 +3824,8 @@ void AddFreshtoSCACell(CircuitStruct* Circuit, LibraryStruct* Library, int CellI
 		AddCellToSignalInputList(Circuit, NewSignalIndex, CellIndex);
 		i++;
 	}
+
+	free(Str);
 }
 
 void PropagateSecureSignals(CircuitStruct* Circuit, char print = 1)
@@ -3501,10 +3936,12 @@ void NullifyNextShares(CircuitStruct* Circuit)
 
 	for (SignalIndex = 0;SignalIndex < Circuit->NumberOfSignals;SignalIndex++)
 		if (!Circuit->Signals[SignalIndex]->Deleted)
+		{
 			if (Circuit->Signals[SignalIndex]->Type == SignalType_constant)
 				Circuit->Signals[SignalIndex]->NextShare = 0; // refering to signal constant 0
 			else
 				Circuit->Signals[SignalIndex]->NextShare = -1;
+		}
 }
 
 void AddClockGatingController(LibraryStruct* Library, CircuitStruct* Circuit, int NewClockSignalIndex)
@@ -3512,7 +3949,8 @@ void AddClockGatingController(LibraryStruct* Library, CircuitStruct* Circuit, in
 	int   CellIndex;
 	int   SynchSignalIndex;
 
-	SynchSignalIndex = AddSignal(Circuit, (char*)"Synch");
+	SynchSignalIndex = AddSignal(Circuit, (char*)SynchSignalName);
+	Circuit->Signals[SynchSignalIndex]->WireType |= WireType_Controller;
 	AddSignalToOutputs(Circuit, SynchSignalIndex);
 
 	CellIndex = AddCell(Library, Circuit, (char*)"ClockGatingInst", Library->ClockGatingCellType);
@@ -3521,13 +3959,12 @@ void AddClockGatingController(LibraryStruct* Library, CircuitStruct* Circuit, in
 	Circuit->Cells[CellIndex]->Outputs[0] = NewClockSignalIndex;
 	Circuit->Cells[CellIndex]->Outputs[1] = SynchSignalIndex;
 
-	Circuit->Signals[NewClockSignalIndex]->Output = CellIndex;
-	Circuit->Signals[SynchSignalIndex]->Output = CellIndex;
-
 	AddCellToSignalInputList(Circuit, Circuit->ClockSignalIndex, CellIndex);
 	AddCellToSignalInputList(Circuit, Circuit->ResetSignalIndex, CellIndex);
-}
 
+	Circuit->Signals[NewClockSignalIndex]->Output = CellIndex;
+	Circuit->Signals[SynchSignalIndex]->Output = CellIndex;
+}
 
 int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOrder, char* Scheme, char MakePipeline)
 {
@@ -3572,7 +4009,7 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 
 			if (Circuit->ClockSignalIndex < 0)
 			{
-				Circuit->ClockSignalIndex = AddSignal(Circuit, (char*)"clk");
+				Circuit->ClockSignalIndex = AddSignal(Circuit, (char*)LibraryClockName);
 				AddSignalToInputs(Circuit, Circuit->ClockSignalIndex);
 				Circuit->Signals[Circuit->ClockSignalIndex]->ToBeBalanced = 0;
 				free(Circuit->Signals[Circuit->ClockSignalIndex]->Attribute);
@@ -3600,7 +4037,7 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 
 					if (Circuit->Cells[CellIndex]->ToBeSecured)
 						if (Library->CellTypes[Circuit->Cells[CellIndex]->Type]->SCAType >= 0)
-							NumberOfReplacedCells += ReplaceCelltoSCA(Circuit, Library, CellIndex, SecurityOrder);
+							NumberOfReplacedCells += ReplaceCelltoSCA(Circuit, Library, CellIndex, SecurityOrder, Scheme);
 						else
 						{
 							printf("cell \"%s\" should be secured, but no SCA-resistant cell type is defined for \"%s\"\n", Circuit->Cells[CellIndex]->Name, Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Cases[0]);
@@ -3619,7 +4056,7 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 
 				if (Circuit->Cells[CellIndex]->ToBeSecured)
 					if (Library->CellTypes[Circuit->Cells[CellIndex]->Type]->SCAType >= 0)
-						NumberOfReplacedCells += ReplaceCelltoSCA(Circuit, Library, CellIndex, SecurityOrder);
+						NumberOfReplacedCells += ReplaceCelltoSCA(Circuit, Library, CellIndex, SecurityOrder, Scheme);
 					else
 					{
 						printf("cell \"%s\" should be secured, but no SCA-resistant cell type is defined for \"%s\"\n", Circuit->Cells[CellIndex]->Name, Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Cases[0]);
@@ -3640,7 +4077,7 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 
 		if (!res)
 		{
-			printf("the circuit has %d register stages\n", Circuit->MaxDepth + (Circuit->NumberOfRegs ? 1 : 0));
+			printf("the circuit has %d register stage(s)\n", Circuit->MaxDepth + (Circuit->NumberOfRegs ? 1 : 0));
 
 			// add fresh masks to SCA-resistant cells
 			for (DepthIndex = 0;DepthIndex <= Circuit->MaxDepth;DepthIndex++)
@@ -3660,6 +4097,12 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 				if (Library->RegBufferCellType == -1)
 				{
 					printf("RegBuffer cell type not defined in the library\n");
+					return(1);
+				}
+
+				if (Library->RegSCABufferCellType == -1)
+				{
+					printf("RegSCABuffer cell type not defined in the library\n");
 					return(1);
 				}
 
@@ -3697,7 +4140,7 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 
 				if (!res)
 				{
-					printf("the circuit has %d register stages\n", Circuit->MaxDepth + (Circuit->NumberOfRegs ? 1 : 0));
+					printf("the circuit has %d register stage(s)\n", Circuit->MaxDepth + (Circuit->NumberOfRegs ? 1 : 0));
 
 					// make the depth of all inputs of each register the same by adding RegBuffers
 					NumberOfAdded = 0;
@@ -3714,7 +4157,7 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 
 				if (!res)
 				{
-					printf("the circuit has %d register stages\n", Circuit->MaxDepth + (Circuit->NumberOfRegs ? 1 : 0));
+					printf("the circuit has %d register stage(s)\n", Circuit->MaxDepth + (Circuit->NumberOfRegs ? 1 : 0));
 
 					// checking the balancedness of inputs of gates
 					for (GateIndex = 0;GateIndex < Circuit->NumberOfGates;GateIndex++)
@@ -3806,7 +4249,9 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 
 				if (!res)
 				{
-					NewClockSignal = ChangeRegistersClock(Circuit);
+					NewClockSignal = AddSignal(Circuit, (char*)ClockGatingSignalName);
+					Circuit->Signals[NewClockSignal]->WireType |= WireType_Clock;
+					ChangeRegistersClock(Circuit, NewClockSignal);
 					AddClockGatingController(Library, Circuit, NewClockSignal);
 					printf("clock signal of registers changed and a clock-gated circuity in %d steps is added\n", Circuit->MaxDepth + (Circuit->NumberOfRegs ? 1 : 0));
 
@@ -4294,20 +4739,6 @@ int ExtractSecureCombinatorial(LibraryStruct* Library, CircuitStruct* Circuit, C
 	return res;
 }
 
-
-void CorrectSignalName(char* SignalName)
-{
-	int   i;
-
-	if (SignalName[0] == '\\')
-	{
-		i = TrimSignalName(SignalName);
-		strcat(SignalName, " ");
-		if (i >= 0)
-			sprintf(SignalName, "%s[%d]", SignalName, i);
-	}
-}
-
 int ProcessStep2(char* InputVerilogFileName, char* MainModuleName,
 	LibraryStruct* Library, CircuitStruct* Circuit,  char* AttributeKeyword, char* Method, char LowLatency)
 {
@@ -4353,7 +4784,7 @@ int ProcessStep2(char* InputVerilogFileName, char* MainModuleName,
 	{
 		CircuitStruct CircuitNew;
 
-		res = ReadDesignFile(Step2FileName, Step2ModuleName, Library, &CircuitNew, NULL);
+		res = ReadDesignFile(Step2FileName, Step2ModuleName, Library, &CircuitNew, NULL, NULL);
 
 		if (!res)
 		{
@@ -4676,9 +5107,11 @@ int ProcessStep2(char* InputVerilogFileName, char* MainModuleName,
 		Library->CellTypes[Library->NumberOfCellTypes]->SCAType2 = -1;
 		Library->CellTypes[Library->NumberOfCellTypes]->Type = 0;
 		Library->CellTypes[Library->NumberOfCellTypes]->CustomName = (char*)calloc(1, sizeof(char));
+		Library->CellTypes[Library->NumberOfCellTypes]->Generic = NULL;
 
 		Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Gate;
 		Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_SCA;
+		Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_ANF;
 
 		Library->CellTypes[Library->NumberOfCellTypes]->NumberOfStages = 2 - LowLatency;
 
@@ -4686,6 +5119,8 @@ int ProcessStep2(char* InputVerilogFileName, char* MainModuleName,
 		Library->CellTypes[Library->NumberOfCellTypes]->Cases = (char **)malloc(1 * sizeof(char *));
 		Library->CellTypes[Library->NumberOfCellTypes]->Cases[0] = (char *)malloc(strlen(Step2ModuleName) + 1);
 		strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Cases[0], Step2ModuleName);
+		Library->CellTypes[Library->NumberOfCellTypes]->PrintName = (char *)malloc(strlen(Step2ModuleName) + 1);
+		strcpy(Library->CellTypes[Library->NumberOfCellTypes]->PrintName, Step2ModuleName);
 
 		//-------------
 
@@ -4706,7 +5141,7 @@ int ProcessStep2(char* InputVerilogFileName, char* MainModuleName,
 			Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs++;
 		}
 
-		strcpy(Str1, "clk");
+		strcpy(Str1, LibraryClockName);
 		Library->CellTypes[Library->NumberOfCellTypes]->Inputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs] = (char *)malloc(strlen(Str1) + 1);
 		strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Inputs[Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs], Str1);
 		Library->CellTypes[Library->NumberOfCellTypes]->NumberOfInputs++;
@@ -4747,9 +5182,11 @@ int ProcessStep2(char* InputVerilogFileName, char* MainModuleName,
 		Library->CellTypes[Library->NumberOfCellTypes]->SCAType2 = -1;
 		Library->CellTypes[Library->NumberOfCellTypes]->Type = 0;
 		Library->CellTypes[Library->NumberOfCellTypes]->CustomName = (char*)calloc(1, sizeof(char));
+		Library->CellTypes[Library->NumberOfCellTypes]->Generic = NULL;
 
 		Library->CellTypes[Library->NumberOfCellTypes]->GateOrReg = CellType_Gate;
 		Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_Normal;
+		Library->CellTypes[Library->NumberOfCellTypes]->Type |= GateType_ANF;
 
 		Library->CellTypes[Library->NumberOfCellTypes]->NumberOfStages = 2 - LowLatency;
 
@@ -4757,6 +5194,8 @@ int ProcessStep2(char* InputVerilogFileName, char* MainModuleName,
 		Library->CellTypes[Library->NumberOfCellTypes]->Cases = (char **)malloc(1 * sizeof(char *));
 		Library->CellTypes[Library->NumberOfCellTypes]->Cases[0] = (char *)malloc(strlen(Step2ModuleName) + 1);
 		strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Cases[0], Step2ModuleName);
+		Library->CellTypes[Library->NumberOfCellTypes]->PrintName = (char *)malloc(strlen(Step2ModuleName) + 1);
+		strcpy(Library->CellTypes[Library->NumberOfCellTypes]->PrintName, Step2ModuleName);
 
 		//-------------
 
@@ -4954,9 +5393,9 @@ void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char Securit
 	char*  ThisPortName = (char *)malloc(Max_Name_Length * sizeof(char));
 	char*  PortName     = (char *)malloc(Max_Name_Length * sizeof(char));
 	char*  TempPortName = (char *)malloc(Max_Name_Length * sizeof(char));
-	char*  ThisSignalName = (char *)malloc(Max_Name_Length * 1000 * sizeof(char));
-	char*  SignalName     = (char *)malloc(Max_Name_Length * 1000 * sizeof(char));
-	char*  TempSignalName = (char *)malloc(Max_Name_Length * 1000 * sizeof(char));
+	char*  ThisSignalName = (char *)malloc(Max_Name_Length * 4000 * sizeof(char));
+	char*  SignalName     = (char *)malloc(Max_Name_Length * 4000 * sizeof(char));
+	char*  TempSignalName = (char *)malloc(Max_Name_Length * 4000 * sizeof(char));
 	char   OnePortWritten;
 	char*  ptr;
 	char** PortNameList;
@@ -4982,10 +5421,11 @@ void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char Securit
 
 		if (!CellUnconnected)
 		{
-			fprintf(OutputFile, "    %s ", Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Cases[0]);
+			fprintf(OutputFile, "    %s ", Library->CellTypes[Circuit->Cells[CellIndex]->Type]->PrintName);
 
 			if ((Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Type & GateType_SCA) &&
-				(Circuit->Cells[CellIndex]->Type != Library->RegBufferCellType))
+				(Circuit->Cells[CellIndex]->Type != Library->RegBufferCellType) &&
+				(Circuit->Cells[CellIndex]->Type != Library->RegSCABufferCellType))
 			{
 				fprintf(OutputFile, "#(");
 				if (!strcmp(Scheme, "GHPC"))
@@ -4995,7 +5435,35 @@ void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char Securit
 				else
 					fprintf(OutputFile, ".security_order(%d), ", SecurityOrder);
 
-				fprintf(OutputFile, ".pipeline(%d)) ", MakePipeline);
+				fprintf(OutputFile, ".pipeline(%d)", MakePipeline);
+
+				if (Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Generic != NULL)
+					fprintf(OutputFile, ", %s", Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Generic);
+
+				if (Circuit->Cells[CellIndex]->Generic != NULL)
+					fprintf(OutputFile, ", %s", Circuit->Cells[CellIndex]->Generic);
+
+				fprintf(OutputFile, ") ");
+			}
+			else
+			{
+				if ((Circuit->Cells[CellIndex]->Generic != NULL) ||
+					(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Generic != NULL))
+				{
+					fprintf(OutputFile, "#(");
+
+					if (Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Generic != NULL)
+						fprintf(OutputFile, "%s", Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Generic);
+
+					if (Circuit->Cells[CellIndex]->Generic != NULL)
+					{
+						if (Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Generic != NULL)
+							fprintf(OutputFile, ", ");
+
+						fprintf(OutputFile, "%s", Circuit->Cells[CellIndex]->Generic);
+					}
+					fprintf(OutputFile, ") ");
+				}
 			}
 
 			if (Circuit->Cells[CellIndex]->Type == Library->ClockGatingCellType)
@@ -5038,6 +5506,7 @@ void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char Securit
 				for (InputIndex = 0;InputIndex < Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs;InputIndex++)
 				{
 					strcpy(ThisPortName, Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[InputIndex]);
+
 					ptr = strchr(ThisPortName, '[');
 					if (ptr != NULL)
 						*ptr = 0;
@@ -5046,7 +5515,6 @@ void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char Securit
 					{
 						strcpy(ThisSignalName, Circuit->Signals[Circuit->Cells[CellIndex]->Inputs[InputIndex]]->Name);
 						CorrectSignalName(ThisSignalName);
-
 						if (SignalName[0] == 0)
 							strcpy(SignalName, ThisSignalName);
 						else
@@ -5175,10 +5643,11 @@ void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char Securit
 }
 
 void WriteVerilogFile(char* InputVerilogFileName, char* MainModuleName, char* Method, char* Scheme, char* LibraryName,
-	char SecurityOrder, char KeepOriginalNames, char WriteInOrder, char WriteDepths, char MakePipeline,
+	char SecurityOrder, char KeepOriginalNames, char WriteInOrder, char WriteDepths, char MakePipeline, char SeparateUnmaskedModule,
 	LibraryStruct* Library, CircuitStruct* Circuit)
 {
 	FILE* OutputFile;
+	FILE* OutputFileUnmasked;
 	char* OutputVerilogFileName = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* FileNamePostfix = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* Str1 = (char *)malloc(Max_Name_Length * sizeof(char));
@@ -5194,6 +5663,8 @@ void WriteVerilogFile(char* InputVerilogFileName, char* MainModuleName, char* Me
 	int	  RegIndex;
 	int	  DepthIndex;
 	char  f;
+	char  OneAdded;
+	int   Size;
 
 	if (!strcmp(Method, "naive"))
 		strcpy(FileNamePostfix, (char*)"");
@@ -5371,10 +5842,10 @@ void WriteVerilogFile(char* InputVerilogFileName, char* MainModuleName, char* Me
 	for (SignalIndex = 0;SignalIndex <= Circuit->NumberOfSignals;SignalIndex++)
 		if ((SignalIndex == Circuit->NumberOfSignals) ||
 			((Circuit->Signals[SignalIndex]->Type == SignalType_wire) &
-			 ((!Circuit->Signals[SignalIndex]->Deleted) &
-			  (Circuit->Signals[SignalIndex]->Output >= 0) &
-			  (Circuit->Signals[SignalIndex]->NumberOfInputs > 0)) ||
-			 (strstr(Circuit->Signals[SignalIndex]->Name, "clk_gated") == Circuit->Signals[SignalIndex]->Name)))
+			((!Circuit->Signals[SignalIndex]->Deleted) &
+				(Circuit->Signals[SignalIndex]->Output >= 0) &
+				(Circuit->Signals[SignalIndex]->NumberOfInputs > 0)) ||
+				(strstr(Circuit->Signals[SignalIndex]->Name, ClockGatingSignalName) == Circuit->Signals[SignalIndex]->Name)))
 		{
 			if (KeepOriginalNames)
 			{
@@ -5436,33 +5907,426 @@ void WriteVerilogFile(char* InputVerilogFileName, char* MainModuleName, char* Me
 	//---- writing the Circuit->Cells ---//
 	fprintf(OutputFile, "\n");
 
-	if (WriteInOrder)
+	if (SeparateUnmaskedModule)
 	{
-		for (DepthIndex = 0;DepthIndex <= Circuit->MaxDepth;DepthIndex++)
-		{
-			fprintf(OutputFile, "    /* cells in depth %d */\n", DepthIndex);
-			for (TempIndex = 0;TempIndex < Circuit->NumberOfCellsInDepth[DepthIndex];TempIndex++)
+		printf("writing the seperate unmasked module ");
+
+		fprintf(OutputFile, "    UnmaskedModule UnmaskedModuleInst (");
+
+		//---- writing the module name and ports of the Unmasked moudle ---//
+		i = strlen(OutputVerilogFileName) - 1;
+		while ((i >= 0) &&
+			(OutputVerilogFileName[i] != '/') &&
+			(OutputVerilogFileName[i] != '\\'))
+			i--;
+
+		OutputVerilogFileName[i + 1] = 0;
+		strcat(OutputVerilogFileName, "UnmaskedModule.v");
+		OutputFileUnmasked = fopen(OutputVerilogFileName, "wt");
+
+		fprintf(OutputFileUnmasked, "module UnmaskedModule (");
+
+		for (InputIndex = 0;InputIndex < Circuit->NumberOfInputs;InputIndex++)
+			Circuit->Signals[Circuit->Inputs[InputIndex]]->Printed = 0;
+
+		OneAdded = 0;
+		for (InputIndex = 0;InputIndex < Circuit->NumberOfInputs;InputIndex++)
+			if ((!Circuit->Signals[Circuit->Inputs[InputIndex]]->Printed) &&
+				(!Circuit->Signals[Circuit->Inputs[InputIndex]]->ToBeSecured) &&
+				(!Circuit->Signals[Circuit->Inputs[InputIndex]]->FreshMask))
 			{
-				CellIndex = Circuit->CellsInDepth[DepthIndex][TempIndex];
-				WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+				strcpy(Str1, Circuit->Signals[Circuit->Inputs[InputIndex]]->Name);
+				TrimSignalName(Str1);
+				for (i = InputIndex + 1;i < Circuit->NumberOfInputs;i++)
+					if ((!Circuit->Signals[Circuit->Inputs[i]]->Printed) &&
+						(!Circuit->Signals[Circuit->Inputs[i]]->ToBeSecured) &&
+						(!Circuit->Signals[Circuit->Inputs[i]]->FreshMask))
+					{
+						strcpy(Str2, Circuit->Signals[Circuit->Inputs[i]]->Name);
+						TrimSignalName(Str2);
+						if (!strcmp(Str1, Str2))
+							Circuit->Signals[Circuit->Inputs[i]]->Printed = 1;
+					}
+
+				if (OneAdded)
+					fprintf(OutputFileUnmasked, " , ");
+				fprintf(OutputFileUnmasked, "%s", Str1);
+				OneAdded = 1;
 			}
-			fprintf(OutputFile, "\n");
-		}
 
-		if (Circuit->NumberOfRegs > 0)
-			fprintf(OutputFile, "    /* register cells */\n");
+		//------------------
 
-		for (RegIndex = 0;RegIndex < Circuit->NumberOfRegs;RegIndex++)
+		for (SignalIndex = 0;SignalIndex < Circuit->NumberOfSignals;SignalIndex++)
+			if ((Circuit->Signals[SignalIndex]->WireType & WireType_Clock) ||
+				(Circuit->Signals[SignalIndex]->WireType & WireType_Controller))
+				fprintf(OutputFileUnmasked, " , %s", Circuit->Signals[SignalIndex]->Name);
+
+		Str2[0] = 0;
+		for (SignalIndex = 0;SignalIndex < Circuit->NumberOfSignals;SignalIndex++)
+			if ((Circuit->Signals[SignalIndex]->Type == SignalType_wire) &&
+				(!Circuit->Signals[SignalIndex]->Deleted) &&
+				(!Circuit->Signals[SignalIndex]->ToBeSecured) &&
+				(!(Circuit->Signals[SignalIndex]->WireType & WireType_Clock)) &&
+				(!(Circuit->Signals[SignalIndex]->WireType & WireType_Controller)))
+			{
+				for (InputIndex = 0;InputIndex < Circuit->Signals[SignalIndex]->NumberOfInputs;InputIndex++)
+					if ((Library->CellTypes[Circuit->Cells[Circuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->Type & GateType_SCA) ||
+						(Library->CellTypes[Circuit->Cells[Circuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->Type & GateType_Controller))
+						break;
+
+				if (InputIndex < Circuit->Signals[SignalIndex]->NumberOfInputs)
+				{
+					strcpy(Str1, Circuit->Signals[SignalIndex]->Name);
+					TrimSignalName(Str1);
+					if (strcmp(Str1, Str2))
+					{
+						fprintf(OutputFileUnmasked, " , %s", Str1);
+						strcpy(Str2, Str1);
+					}
+				}
+			}
+
+		//------------------
+
+		for (OutputIndex = 0;OutputIndex < Circuit->NumberOfOutputs;OutputIndex++)
+			Circuit->Signals[Circuit->Outputs[OutputIndex]]->Printed = 0;
+
+		for (OutputIndex = 0;OutputIndex < Circuit->NumberOfOutputs;OutputIndex++)
+			if ((!Circuit->Signals[Circuit->Outputs[OutputIndex]]->Printed) &&
+				(!Circuit->Signals[Circuit->Outputs[OutputIndex]]->ToBeSecured) &&
+				(!(Circuit->Signals[Circuit->Outputs[OutputIndex]]->WireType & WireType_Clock)) &&
+				(!(Circuit->Signals[Circuit->Outputs[OutputIndex]]->WireType & WireType_Controller)))
+			{
+				strcpy(Str1, Circuit->Signals[Circuit->Outputs[OutputIndex]]->Name);
+				TrimSignalName(Str1);
+				for (i = OutputIndex + 1;i < Circuit->NumberOfOutputs;i++)
+					if ((!Circuit->Signals[Circuit->Outputs[i]]->Printed) &&
+						(!Circuit->Signals[Circuit->Outputs[i]]->ToBeSecured) &&
+						(!(Circuit->Signals[Circuit->Outputs[i]]->WireType & WireType_Controller)))
+					{
+						strcpy(Str2, Circuit->Signals[Circuit->Outputs[i]]->Name);
+						TrimSignalName(Str2);
+						if (!strcmp(Str1, Str2))
+							Circuit->Signals[Circuit->Outputs[i]]->Printed = 1;
+					}
+				fprintf(OutputFileUnmasked, " , %s", Str1);
+			}
+
+		fprintf(OutputFileUnmasked, ");\n");
+
+		//---- writing the input ports of the Unmasked moudle ---//
+
+		for (InputIndex = 0;InputIndex < Circuit->NumberOfInputs;InputIndex++)
+			Circuit->Signals[Circuit->Inputs[InputIndex]]->Printed = 0;
+
+		OneAdded = 0;
+		for (InputIndex = 0;InputIndex < Circuit->NumberOfInputs;InputIndex++)
+			if ((!Circuit->Signals[Circuit->Inputs[InputIndex]]->Printed) &&
+				(!Circuit->Signals[Circuit->Inputs[InputIndex]]->ToBeSecured) &&
+				(!Circuit->Signals[Circuit->Inputs[InputIndex]]->FreshMask))
+			{
+				strcpy(Str1, Circuit->Signals[Circuit->Inputs[InputIndex]]->Name);
+				IndexH = TrimSignalName(Str1);
+				IndexL = IndexH;
+				for (i = InputIndex + 1;i < Circuit->NumberOfInputs;i++)
+					if ((!Circuit->Signals[Circuit->Inputs[i]]->Printed) &&
+						(!Circuit->Signals[Circuit->Inputs[i]]->ToBeSecured) &&
+						(!Circuit->Signals[Circuit->Inputs[i]]->FreshMask))
+					{
+						strcpy(Str2, Circuit->Signals[Circuit->Inputs[i]]->Name);
+						TempIndex = TrimSignalName(Str2);
+						if (!strcmp(Str1, Str2))
+						{
+							if (IndexH < TempIndex)
+								IndexH = TempIndex;
+							if ((IndexL > TempIndex) || (IndexL == -1))
+								IndexL = TempIndex;
+
+							Circuit->Signals[Circuit->Inputs[i]]->Printed = 1;
+						}
+					}
+
+				fprintf(OutputFileUnmasked, "    input ");
+				if (IndexH >= 0)
+					fprintf(OutputFileUnmasked, "[%d:%d] ", IndexH, IndexL);
+				fprintf(OutputFileUnmasked, "%s ;\n", Str1);
+
+				if (OneAdded)
+					fprintf(OutputFile, ",");
+				OneAdded = 1;
+
+				fprintf(OutputFile, " .%s (%s", Str1, Str1);
+				if (IndexH >= 0)
+					fprintf(OutputFile, " [%d:%d]", IndexH, IndexL);
+				fprintf(OutputFile, ")");
+			}
+
+		for (SignalIndex = 0;SignalIndex < Circuit->NumberOfSignals;SignalIndex++)
+			if ((Circuit->Signals[SignalIndex]->WireType & WireType_Clock) ||
+				(Circuit->Signals[SignalIndex]->WireType & WireType_Controller))
+			{
+				fprintf(OutputFileUnmasked, "    input %s;\n", Circuit->Signals[SignalIndex]->Name);
+				fprintf(OutputFile, ", .%s (%s)", Circuit->Signals[SignalIndex]->Name, Circuit->Signals[SignalIndex]->Name);
+			}
+
+		//---- writing the output ports of the Unmasked moudle ---//
+		Str1[0] = 0;
+		IndexH = -1;
+		IndexL = -1;
+		for (SignalIndex = 0;SignalIndex <= Circuit->NumberOfSignals;SignalIndex++)
+			if ((SignalIndex == Circuit->NumberOfSignals) ||
+				((Circuit->Signals[SignalIndex]->Type == SignalType_wire) &&
+				(!Circuit->Signals[SignalIndex]->ToBeSecured) &&
+				(!(Circuit->Signals[SignalIndex]->WireType & WireType_Clock)) &&
+				(!(Circuit->Signals[SignalIndex]->WireType & WireType_Controller)) &&
+				(!Circuit->Signals[SignalIndex]->Deleted) &&
+				(Circuit->Signals[SignalIndex]->Output >= 0) &&
+				(Circuit->Signals[SignalIndex]->NumberOfInputs > 0)))
+			{
+				if (SignalIndex < Circuit->NumberOfSignals)
+				{
+					for (InputIndex = 0;InputIndex < Circuit->Signals[SignalIndex]->NumberOfInputs;InputIndex++)
+						if ((Library->CellTypes[Circuit->Cells[Circuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->Type & GateType_SCA) ||
+							(Library->CellTypes[Circuit->Cells[Circuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->Type & GateType_Controller))
+							break;
+
+					if (InputIndex >= Circuit->Signals[SignalIndex]->NumberOfInputs)
+						continue;
+
+					strcpy(Str2, Circuit->Signals[SignalIndex]->Name);
+				}
+				else
+					Str2[0] = 0;
+
+				TempIndex = TrimSignalName(Str2);
+				if (strcmp(Str1, Str2))
+				{
+					if (Str1[0])
+					{
+						fprintf(OutputFileUnmasked, "    output ");
+						if (IndexH >= 0)
+							fprintf(OutputFileUnmasked, "[%d:%d] ", IndexH, IndexL);
+						fprintf(OutputFileUnmasked, "%s ;\n", Str1);
+
+						fprintf(OutputFile, ", .%s (%s", Str1, Str1);
+						if (IndexH >= 0)
+							fprintf(OutputFile, " [%d:%d]", IndexH, IndexL);
+						fprintf(OutputFile, ")");
+					}
+					strcpy(Str1, Str2);
+					IndexH = -1;
+					IndexL = -1;
+				}
+
+				if (IndexH < TempIndex)
+					IndexH = TempIndex;
+				if ((IndexL > TempIndex) || (IndexL == -1))
+					IndexL = TempIndex;
+			}
+
+		//------------------
+
+		for (OutputIndex = 0;OutputIndex < Circuit->NumberOfOutputs;OutputIndex++)
+			Circuit->Signals[Circuit->Outputs[OutputIndex]]->Printed = 0;
+
+		for (OutputIndex = 0;OutputIndex < Circuit->NumberOfOutputs;OutputIndex++)
+			if ((!Circuit->Signals[Circuit->Outputs[OutputIndex]]->Printed) &&
+				(!Circuit->Signals[Circuit->Outputs[OutputIndex]]->ToBeSecured) &&
+				(!(Circuit->Signals[Circuit->Outputs[OutputIndex]]->WireType & WireType_Clock)) &&
+				(!(Circuit->Signals[Circuit->Outputs[OutputIndex]]->WireType & WireType_Controller)))
+			{
+				strcpy(Str1, Circuit->Signals[Circuit->Outputs[OutputIndex]]->Name);
+				IndexH = TrimSignalName(Str1);
+				IndexL = IndexH;
+				for (i = OutputIndex + 1;i < Circuit->NumberOfOutputs;i++)
+					if ((!Circuit->Signals[Circuit->Outputs[i]]->Printed) &&
+						(!Circuit->Signals[Circuit->Outputs[i]]->ToBeSecured) &&
+						(!(Circuit->Signals[Circuit->Outputs[i]]->WireType & WireType_Clock)) &&
+						(!(Circuit->Signals[Circuit->Outputs[i]]->WireType & WireType_Controller)))
+					{
+						strcpy(Str2, Circuit->Signals[Circuit->Outputs[i]]->Name);
+						TempIndex = TrimSignalName(Str2);
+						if (!strcmp(Str1, Str2))
+						{
+							if (IndexH < TempIndex)
+								IndexH = TempIndex;
+							if ((IndexL > TempIndex) || (IndexL == -1))
+								IndexL = TempIndex;
+
+							Circuit->Signals[Circuit->Outputs[i]]->Printed = 1;
+						}
+					}
+
+				fprintf(OutputFileUnmasked, "    output ");
+				if (IndexH >= 0)
+					fprintf(OutputFileUnmasked, "[%d:%d] ", IndexH, IndexL);
+				fprintf(OutputFileUnmasked, "%s ;\n", Str1);
+
+				fprintf(OutputFile, ", .%s (%s", Str1, Str1);
+				if (IndexH >= 0)
+					fprintf(OutputFile, "[%d:%d]", IndexH, IndexL);
+				fprintf(OutputFile, ")");
+			}
+
+		//---- writing the wires of the Unmasked moudle ---//
+		Str1[0] = 0;
+		IndexH = -1;
+		IndexL = -1;
+		for (SignalIndex = 0;SignalIndex <= Circuit->NumberOfSignals;SignalIndex++)
+			if ((SignalIndex == Circuit->NumberOfSignals) ||
+				((Circuit->Signals[SignalIndex]->Type == SignalType_wire) &&
+				(!Circuit->Signals[SignalIndex]->ToBeSecured) &&
+				(!(Circuit->Signals[SignalIndex]->WireType & WireType_Clock)) &&
+				(!(Circuit->Signals[SignalIndex]->WireType & WireType_Controller)) &&
+				(!Circuit->Signals[SignalIndex]->Deleted) &&
+				(Circuit->Signals[SignalIndex]->Output >= 0) &&
+				(Circuit->Signals[SignalIndex]->NumberOfInputs > 0)))
+			{
+				if (SignalIndex < Circuit->NumberOfSignals)
+				{
+					for (InputIndex = 0;InputIndex < Circuit->Signals[SignalIndex]->NumberOfInputs;InputIndex++)
+						if ((Library->CellTypes[Circuit->Cells[Circuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->Type & GateType_SCA) ||
+							(Library->CellTypes[Circuit->Cells[Circuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->Type & GateType_Controller))
+							break;
+
+					if (InputIndex < Circuit->Signals[SignalIndex]->NumberOfInputs)
+						continue;
+
+					strcpy(Str2, Circuit->Signals[SignalIndex]->Name);
+				}
+				else
+					Str2[0] = 0;
+
+				TempIndex = TrimSignalName(Str2);
+				if (strcmp(Str1, Str2))
+				{
+					if (Str1[0])
+					{
+						fprintf(OutputFileUnmasked, "    wire ");
+						if (IndexH >= 0)
+							fprintf(OutputFileUnmasked, "[%d:%d] ", IndexH, IndexL);
+						fprintf(OutputFileUnmasked, "%s ;\n", Str1);
+					}
+					strcpy(Str1, Str2);
+					IndexH = -1;
+					IndexL = -1;
+				}
+
+				if (IndexH < TempIndex)
+					IndexH = TempIndex;
+				if ((IndexL > TempIndex) || (IndexL == -1))
+					IndexL = TempIndex;
+			}
+
+		//----------------------------------------------------------
+		//---- writing the Circuit->Cells ---//
+
+		fprintf(OutputFile, " ) ;\n\n");
+		fprintf(OutputFileUnmasked, "\n");
+
+		if (WriteInOrder)
 		{
-			CellIndex = Circuit->Regs[RegIndex];
-			WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+			for (CellIndex = 0;CellIndex < Circuit->NumberOfCells;CellIndex++)
+				if (Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Type & GateType_Controller)
+					WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+
+			fprintf(OutputFile, "\n");
+			fprintf(OutputFile, "    /* logical cells */\n\n");
+			fprintf(OutputFileUnmasked, "    /* logical cells */\n\n");
+
+			for (DepthIndex = 0;DepthIndex <= Circuit->MaxDepth;DepthIndex++)
+			{
+				fprintf(OutputFile, "    /* cells in depth %d */\n", DepthIndex);
+				for (TempIndex = 0;TempIndex < Circuit->NumberOfCellsInDepth[DepthIndex];TempIndex++)
+				{
+					CellIndex = Circuit->CellsInDepth[DepthIndex][TempIndex];
+					if (!(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Type & GateType_Controller))
+						if (Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Type & GateType_SCA)
+							WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+						else
+							WriteVerilgCell(OutputFileUnmasked, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+				}
+				fprintf(OutputFile, "\n");
+			}
+
+			fprintf(OutputFileUnmasked, "\n");
+
+			if (Circuit->NumberOfRegs > 0)
+			{
+				fprintf(OutputFile, "    /* register cells */\n\n");
+				fprintf(OutputFileUnmasked, "    /* register cells */\n\n");
+			}
+
+ 			for (RegIndex = 0;RegIndex < Circuit->NumberOfRegs;RegIndex++)
+			{
+				CellIndex = Circuit->Regs[RegIndex];
+				if (Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Type & GateType_SCA)
+					WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+				else
+					WriteVerilgCell(OutputFileUnmasked, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+			}
 		}
+		else
+			for (CellIndex = 0;CellIndex < Circuit->NumberOfCells;CellIndex++)
+			{
+				if ((Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Type & GateType_SCA) ||
+					(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Type & GateType_Controller))
+					WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+				else
+					WriteVerilgCell(OutputFileUnmasked, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+			}
+
+		fprintf(OutputFileUnmasked, "endmodule\n");
+		fclose(OutputFileUnmasked);
+
+		printf("done\n");
 	}
 	else
-		for (CellIndex = 0;CellIndex < Circuit->NumberOfCells;CellIndex++)
-			WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+	{
+		if (WriteInOrder)
+		{
+			for (DepthIndex = 0;DepthIndex <= Circuit->MaxDepth;DepthIndex++)
+			{
+				fprintf(OutputFile, "    /* cells in depth %d */\n", DepthIndex);
+				for (TempIndex = 0;TempIndex < Circuit->NumberOfCellsInDepth[DepthIndex];TempIndex++)
+				{
+					CellIndex = Circuit->CellsInDepth[DepthIndex][TempIndex];
+					WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+				}
+				fprintf(OutputFile, "\n");
+			}
+
+			if (Circuit->NumberOfRegs > 0)
+				fprintf(OutputFile, "    /* register cells */\n");
+
+			for (RegIndex = 0;RegIndex < Circuit->NumberOfRegs;RegIndex++)
+			{
+				CellIndex = Circuit->Regs[RegIndex];
+				WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+			}
+		}
+		else
+			for (CellIndex = 0;CellIndex < Circuit->NumberOfCells;CellIndex++)
+				WriteVerilgCell(OutputFile, CellIndex, Scheme, SecurityOrder, KeepOriginalNames, WriteDepths, MakePipeline, Library, Circuit);
+	}
 
 	fprintf(OutputFile, "endmodule\n");
+
+	if (SeparateUnmaskedModule)
+	{
+		fprintf(OutputFile, "\n//------------------------------------------------\n\n");
+
+		OutputFileUnmasked = fopen(OutputVerilogFileName, "rt");
+		while (!feof(OutputFileUnmasked))
+		{
+			Size = fread(Str1, 1, Max_Name_Length, OutputFileUnmasked);
+			if (Size)
+				fwrite(Str1, 1, Size, OutputFile);
+		}
+		fclose(OutputFileUnmasked);
+		remove(OutputVerilogFileName);
+	}
+
 	fclose(OutputFile);
 
 	free(FileNamePostfix);

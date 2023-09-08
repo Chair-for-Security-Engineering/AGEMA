@@ -55,6 +55,7 @@ int main(int argc, char *argv[])
 	char  WriteInOrder = 1;
 	char  WriteDepths = 0;
 	char  SecurityOrder; // d > 0 (1: first-order security with 2 shares)
+	char  SeparateUnmaskedModule = 0;
 	int   i;
 
 	if (argc > 1)
@@ -85,6 +86,7 @@ int main(int argc, char *argv[])
 			printf("-nn/-newnames    : signals and cells are renamed freshly, default is to keep original names for naive method\n");
 			printf("-no/-noorder     : the cells are written not based on their logic depth, default is to wite them in order\n");
 			printf("-wd/-writedepth  : the logic depth of each cell is written, default is to not write the depth\n");
+			printf("-su/-sepunmasked : make a separate module for the unmasked part of the design, default is not to do so\n");
 			return 0;
 		}
 	}
@@ -203,6 +205,11 @@ int main(int argc, char *argv[])
 			WriteDepths = 1;
 			i++;
 		}
+		else if ((!strcmp(argv[i], "-su")) || (!strcmp(argv[i], "-sepunmasked")))
+		{
+			SeparateUnmaskedModule = 1;
+			i++;
+		}
 		else
 		{
 			printf("argument \"%s\" not known\n", argv[i]);
@@ -259,7 +266,8 @@ int main(int argc, char *argv[])
 
 	//--------------------------------------
 
-	if (((!strcmp(Scheme, "GHPC")) || (!strcmp(Scheme, "GHPCLL")) || (!strcmp(Scheme, "COMAR"))) &&
+	if (((!strcmp(Scheme, "GHPC")) || (!strcmp(Scheme, "GHPCLL")) ||
+		 (!strcmp(Scheme, "COMAR"))) &&
 		(SecurityOrder > 1))
 	{
 		printf("schemes GHPC, GHPCLL, and COMAR support only first-order security\n");
@@ -274,7 +282,6 @@ int main(int argc, char *argv[])
 	}
 
 	strcpy(LibraryName, Scheme);
-
 
 	//---------------------------------------------------------------------------------------------//
 
@@ -297,7 +304,7 @@ int main(int argc, char *argv[])
 	char           LowLatency;
 
 	if (!res)
-		res = ReadDesignFile(InputVerilogFileName, MainModuleName, &Library, &Circuit, (char*)ToolName);
+		res = ReadDesignFile(InputVerilogFileName, MainModuleName, &Library, &Circuit, (char*)ToolName, Scheme);
 
 	//---------------------------------------------------------------------------------------------//
 	//------------------- Processing the circuit --------------------------------------------------//
@@ -314,7 +321,7 @@ int main(int argc, char *argv[])
 			CircuitStruct  SecureCombCircuit;
 
 			KeepOriginalNames = 0;
-			res = ReadDesignFile(InputVerilogFileName, MainModuleName, &Library, &SecureCombCircuit, (char*)ToolName, 0);
+			res = ReadDesignFile(InputVerilogFileName, MainModuleName, &Library, &SecureCombCircuit, (char*)ToolName, Scheme, 0);
 
 			if (!res)
 				res = ExtractSecureCombinatorial(&Library, &Circuit, &SecureCombCircuit, Method);
@@ -352,7 +359,7 @@ int main(int argc, char *argv[])
 	if (!res)
 		WriteVerilogFile(InputVerilogFileName, MainModuleName, Method, Scheme, LibraryName,
 			SecurityOrder, KeepOriginalNames, WriteInOrder, WriteDepths,
-			MakePipeline, &Library, CircuitPtr);
+			MakePipeline, SeparateUnmaskedModule, &Library, CircuitPtr);
 
 	free(LibraryFileName);
 	free(LibraryPath);

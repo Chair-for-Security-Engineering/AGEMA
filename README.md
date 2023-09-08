@@ -179,4 +179,8 @@ Please see `LICENSE` for further license instructions.
 ## Publications
 D. Knichel, A. Moradi, N. Müller, P. Sasdrich (2021): "[Automated Generation of Masked Hardware](https://doi.org/10.46586/tches.v2022.i1.589-629)" (TCHES 2022, Issue 1) [(pre-print)](https://eprint.iacr.org/2021/569.pdf)
 
+D. Knichel, A. Moradi (2022): "[Composable Gadgets with Reused Fresh Masks, First-Order Probing-Secure Hardware Circuits with only 6 Fresh Masks](https://doi.org/10.46586/tches.v2022.i3.114-140)" (TCHES 2022, Issue 3)  [(pre-print)](https://eprint.iacr.org/2023/1141.pdf)
 
+D. Knichel, A. Moradi (2022): "[Low-Latency Hardware Private Circuits](https://dl.acm.org/doi/abs/10.1145/3548606.3559362)" (ACM CCS 2022) [(pre-print)](https://eprint.iacr.org/2022/507.pdf)
+
+N. Müller, S. Meschkov, D. R. E. Gnad, M. B. Tahoori, A. Moradi (2023): "[Automated Masking of FPGA-Mapped Designs](link will be added later)" (FPL 2023)

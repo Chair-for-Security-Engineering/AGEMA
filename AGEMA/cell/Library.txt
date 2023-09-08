@@ -44,12 +44,18 @@ ClockGating
 SCAReg
 1
 1 reg_masked
-2 clk 1 D d+1
+2 D d+1 clk 1
 1 Q d+1
 
 RegBuffer
 1
 1 buf_clk
+2 C D
+1 Q
+
+RegSCABuffer
+1
+1 buf_sca_clk
 2 C 1 D 1
 1 Q 1
 
@@ -71,29 +77,68 @@ SCAGate
 3 s 1 b d+1 a d+1
 1 c d+1
 
+SCAGate
+0
+1 LUT2_masked
+2 I0 d+1 I1 d+1
+1 O d+1
+
+SCAGate
+0
+1 LUT3_masked
+3 I0 d+1 I1 d+1 I2 d+1
+1 O d+1
+
+SCAGate
+0
+1 LUT4_masked
+4 I0 d+1 I1 d+1 I2 d+1 I3 d+1
+1 O d+1
+
+SCAGate
+0
+1 LUT5_masked
+5 I0 d+1 I1 d+1 I2 d+1 I3 d+1 I4 d+1
+1 O d+1
+
+SCAGate
+0
+1 LUT6_masked
+6 I0 d+1 I1 d+1 I2 d+1 I3 d+1 I4 d+1 I5 d+1
+1 O d+1
+
+SCAGate
+0
+1 LUT6_2_masked
+6 I0 d+1 I1 d+1 I2 d+1 I3 d+1 I4 d+1 I5 1
+2 O5 d+1 O6 d+1
+
 %%%%%%%%%
 
 Reg
 1
 1 DFF
-2 C D
+2 D C
 1 Q
+reg_
 reg_masked
 
 Reg
 1
 3 DFF_X1 DFF_X2 DFF_X4
-2 CK D
+2 D CK
 2 Q QN
+reg_
 reg_masked
 
 
-Gate
+Inverter
 1
 1 NOT
 not
 1 A
 1 Y
+not_
 not_masked
 
 Buffer
@@ -112,12 +157,13 @@ buf
 1 Z
 buf_masked
 
-Gate
+Inverter
 1
 4 INV_X1 INV_X2 INV_X4 INV_X8
 not
 1 A
 1 ZN
+not_
 not_masked
 
 %%%%%%%%%%%%%
@@ -224,7 +270,7 @@ nor_
 
 XORGate
 1
-1 XOR2_X1
+2 XOR2_X1 XOR2_X2
 xor
 2 A B
 1 Z
@@ -237,6 +283,212 @@ xnor
 2 A B
 1 ZN
 xnor_
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%% FPGA cells %%%%%%%%%%%%%%%%%%%%%%%%%%
+
+SCAReg
+1
+1 FD_masked
+2 D d+1 clk 1
+1 Q d+1
+
+SCAReg
+1
+1 FDE_masked
+3 D d+1 clk 1 CE 1
+1 Q d+1
+
+SCAReg
+1
+1 FDR_masked
+3 D d+1 clk 1 R 1
+1 Q d+1
+
+SCAReg
+1
+1 FDS_masked
+3 D d+1 clk 1 S 1
+1 Q d+1
+
+SCAReg
+1
+1 FDRE_masked
+4 D d+1 clk 1 CE 1 R 1
+1 Q d+1
+
+SCAReg
+1
+1 FDSE_masked
+4 D d+1 clk 1 CE 1 S 1
+1 Q d+1
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Reg
+1
+1 FD
+2 D C
+1 Q
+dummy_
+FD_masked
+
+Reg
+1
+1 FDE
+3 D C CE
+1 Q
+dummy_
+FDE_masked
+
+Reg
+1
+1 FDR
+3 D C R
+1 Q
+dummy_
+FDR_masked
+
+Reg
+1
+1 FDS
+3 D C S
+1 Q
+dummy_
+FDS_masked
+
+Reg
+1
+1 FDRE
+4 D C CE R
+1 Q
+dummy_
+FDRE_masked
+
+Reg
+1
+1 FDSE
+4 D C CE S
+1 Q
+dummy_
+FDSE_masked
+
+
+Buffer
+1
+1 BUFG
+buf
+1 I
+1 O
+buf_masked
+
+Buffer
+1
+1 IBUF
+buf
+1 I
+1 O
+buf_masked
+
+Buffer
+1
+1 OBUF 
+buf
+1 I
+1 O
+buf_masked
+
+Buffer
+1
+1 BUFGP
+buf
+1 I
+1 O
+buf_masked
+
+Inverter
+1
+1 INV
+not
+1 I
+1 O
+not_
+not_masked
+
+
+LUT
+1
+1 LUT2
+lut2
+2 I0 I1
+1 O
+LUT2_
+LUT2_masked
+
+LUT
+1
+1 LUT3
+lut3
+3 I0 I1 I2
+1 O
+LUT3_
+LUT3_masked
+
+LUT
+1
+1 LUT4
+lut4
+4 I0 I1 I2 I3
+1 O
+LUT4_
+LUT4_masked
+
+LUT
+1
+1 LUT5
+lut5
+5 I0 I1 I2 I3 I4
+1 O
+LUT5_
+LUT5_masked
+
+LUT
+1
+1 LUT6
+lut6
+6 I0 I1 I2 I3 I4 I5
+1 O
+LUT6_
+LUT6_masked
+
+LUT
+1
+1 LUT6_2
+lut6
+6 I0 I1 I2 I3 I4 I5
+2 O5 O6
+LUT6_2_
+LUT6_2_masked
+
+LUT
+1
+1 LUT4_2
+lut4
+6 I0 I1 I2 I3 I4 I5
+2 O5 O6
+LUT4_2_
+LUT6_2_masked
+
+
+MUX2Gate
+1
+1 MUXF7
+mux
+3 S I0 I1
+1 O
+mux2_
+mux2_masked
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%% HPC1 cells %%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -382,6 +634,52 @@ SCAGate
 1 mux2_GHPC
 5 s d+1 b d+1 a d+1 clk 1 r 1+3*l
 1 c d+1
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%% FPGA cells %%%%%%%%%%%%%%%%%%%%%%%%%%
+
+SCAGate
+2-l
+1 LUT2_GHPC
+4 I0 d+1 I1 d+1 clk 1 r 1+3*l
+1 O d+1
+
+SCAGate
+2-l
+1 LUT3_GHPC
+5 I0 d+1 I1 d+1 I2 d+1 clk 1 r 1+7*l
+1 O d+1
+
+SCAGate
+2-l
+1 LUT4_GHPC
+6 I0 d+1 I1 d+1 I2 d+1 I3 d+1 clk 1 r 1+15*l
+1 O d+1
+
+SCAGate
+2-l
+1 LUT5_GHPC
+7 I0 d+1 I1 d+1 I2 d+1 I3 d+1 I4 d+1 clk 1 r 1+31*l
+1 O d+1
+
+SCAGate
+2-l
+1 LUT6_GHPC
+8 I0 d+1 I1 d+1 I2 d+1 I3 d+1 I4 d+1 I5 d+1 clk 1 r 1+63*l
+1 O d+1
+
+SCAGate
+2-l
+1 LUT6_2_GHPC
+8 I0 d+1 I1 d+1 I2 d+1 I3 d+1 I4 d+1 I5 1 clk 1 r 2*(1+31*l)
+2 O5 d+1 O6 d+1
+
+SCAGate
+2-l
+1 LUT4_2_GHPC
+8 I0 d+1 I1 d+1 I2 d+1 I3 d+1 I4 d+1 I5 1 clk 1 r 2*(1+15*l)
+2 O5 d+1 O6 d+1
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%% HPC3 cells %%%%%%%%%%%%%%%%%%%%%%%%%%
