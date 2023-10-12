@@ -20,6 +20,7 @@ It also supports different masking scheme with respect to the used gadgets:
 - GHPC
 - GHPCLL
 - COMAR
+- LMDPL
 
 For more information about their meaning and difference, please see the paper.
 
