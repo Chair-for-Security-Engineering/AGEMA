@@ -77,6 +77,15 @@
 #define LibraryClockName          "clk"
 #define LibraryResetName          "rst"
 
+#define LibraryLMDPL_PowerUpResetName "Po_rst"
+#define LibraryLMDPL_EnableName       "en"
+#define LibraryLMDPL_MiddleResetName  "mid_rst"
+
+#define LMDPL_PowerUpResetSignalName "Po_rst"
+#define LMDPL_PreCharge1SignalName   "LMDPL_pre1"
+#define LMDPL_PreCharge2SignalName   "LMDPL_pre2"
+#define LMDPL_MiddleResetSignalName  "mid_rst"
+
 struct CellTypeStruct {
 	char	GateOrReg;
 	int		Type;
@@ -123,6 +132,8 @@ struct SignalStruct {
 	char	ToBeSecured;
 	char	ToBeBalanced;
 	int		NextShare;
+	int     NextRail;
+	int     NextPhase;
 	char	Printed;
 	char	Deleted;
 };
@@ -134,6 +145,10 @@ struct LibraryStruct {
 	int					RegBufferCellType          = -1;
 	int					RegSCABufferCellType       = -1;
 	int					ClockGatingCellType        = -1;
+	int                 LMDPL_PrechargeCellType    = -1;
+	int                 LMDPL_RegPrechargeCellType = -1;
+	int                 LMDPL_ClockControlCellType = -1;
+	int                 LMDPL_Reg_sr_CellType      = -1;
 };
 
 struct CircuitStruct {
@@ -160,6 +175,11 @@ struct CircuitStruct {
 	int          *NumberOfCellsInDepth = NULL;
 	int			 *FreshMasks = NULL;
 	int			 NumberOfFreshMasks = 0;
+
+	int			 LMDPL_PowerUpResetSignalIndex = -1;
+	int			 LMDPL_PreCharge1SignalIndex = -1;
+	int			 LMDPL_PreCharge2SignalIndex = -1;
+	int			 LMDPL_MiddleResetSignalIndex = -1;
 };
 
 //***************************************************************************************
@@ -535,6 +555,29 @@ int ReadLibraryFile(char* LibraryFileName, char* LibraryName, char General, Libr
 						if (strcmp(LocalLibraryName, "GHPC"))
 							Ignore = 1;
 					}
+					else if (!strcmp(Str1, "Reg_reg_sr_LMDPL"))
+					{
+						Library->LMDPL_Reg_sr_CellType = Library->NumberOfCellTypes;
+						GateOrReg = CellType_Reg;
+					}
+					else if (!strcmp(Str1, "Precharge"))
+					{
+						Library->LMDPL_PrechargeCellType = Library->NumberOfCellTypes;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Controller;
+					}
+					else if (!strcmp(Str1, "Reg_Precharge"))
+					{
+						Library->LMDPL_RegPrechargeCellType = Library->NumberOfCellTypes;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Controller;
+					}
+					else if (!strcmp(Str1, "ClockControl"))
+					{
+						Library->LMDPL_ClockControlCellType = Library->NumberOfCellTypes;
+						GateOrReg = CellType_Gate;
+						Type |= GateType_Controller;
+					}
 					else
 					{
 						printf("\nCellType \"%s\" in library not known\n", Str1);
@@ -752,6 +795,9 @@ int ReadLibraryFile(char* LibraryFileName, char* LibraryName, char General, Libr
 
 							if (!Ignore)
 							{
+								if (!strcmp(LocalLibraryName, "LMDPL"))
+									strcat(Str1, "_LMDPL");
+
 								for (i = 0;i < Library->NumberOfCellTypes;i++)
 								{
 									for (j = 0;j < Library->CellTypes[i]->NumberOfCases;j++)
@@ -771,6 +817,42 @@ int ReadLibraryFile(char* LibraryFileName, char* LibraryName, char General, Libr
 									free(Str1);
 									free(Str2);
 									return 1;
+								}
+							}
+						}
+					}
+
+					if (Type & GateType_SCA)
+					{
+						if ((!General) && (!strcmp(LocalLibraryName, "LMDPL")))
+						{
+							ReadNonCommentFromFile(LibraryFile, Str1, "%");
+							if (strcmp(Str1, "0"))
+							{
+								if (!Ignore)
+								{
+									free(Library->CellTypes[Library->NumberOfCellTypes]->PrintName);
+									Library->CellTypes[Library->NumberOfCellTypes]->PrintName = (char *)malloc(strlen(Str1) + 1);
+									strcpy(Library->CellTypes[Library->NumberOfCellTypes]->PrintName, Str1);
+								}
+
+								ReadNonCommentFromFile(LibraryFile, Str1, "%");
+								Number = atoi(Str1);
+
+								Str2[0] = 0;
+								for (i = 0;i < Number;i++)
+								{
+									ReadNonCommentFromFile(LibraryFile, Str1, "%");
+									if (Str2[0])
+										strcat(Str2, ", ");
+									strcat(Str2, Str1);
+								}
+
+								if (!Ignore)
+								{
+									free(Library->CellTypes[Library->NumberOfCellTypes]->Generic);
+									Library->CellTypes[Library->NumberOfCellTypes]->Generic = (char *)malloc(strlen(Str2) + 1);
+									strcpy(Library->CellTypes[Library->NumberOfCellTypes]->Generic, Str2);
 								}
 							}
 						}
@@ -3544,7 +3626,6 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 	int		SignalIndex;
 	int     OriginalSignalIndex;
 	int		NewSignalIndex;
-	int		NewSignalIndex2;
 	char*	Str1 = (char *)malloc(Max_Name_Length * sizeof(char));
 	char*	Str2 = (char *)malloc(Max_Name_Length * sizeof(char));
 	int*    Buffer_Int;
@@ -3558,6 +3639,11 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 	int     size;
 	int     value;
 	int     NewCellIndex;
+	char    LMDPL;
+	char    Rail;
+	int     NextSignalIndex;
+
+	LMDPL = !strcmp(Scheme, "LMDPL");
 
 	OrignalType = Circuit->Cells[CellIndex]->Type;
 	Circuit->Cells[CellIndex]->OrigType = OrignalType;
@@ -3633,7 +3719,8 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 		if (SignalIndex == Circuit->ClockSignalIndex) // || (SignalIndex == Circuit->ResetSignalIndex))
 		{
 			DoNormalAfterwards = 1;
-			AddSignalToCellInputList(Circuit, SignalIndex, CellIndex, -1);
+			if (!LMDPL)
+				AddSignalToCellInputList(Circuit, SignalIndex, CellIndex, -1);
 		}
 		else
 			AddSignalToCellInputList(Circuit, SignalIndex, CellIndex, -1);
@@ -3656,42 +3743,130 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 				if (Circuit->Cells[CellIndex]->NumberOfInputs == Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs)
 					break;
 
-				strcpy(Str2, Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs]);
-				TrimSignalName(Str2);
+				for (Rail = 0; Rail <= LMDPL; Rail++)
+				{
+					if (Circuit->Cells[CellIndex]->NumberOfInputs == Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs)
+						break;
 
-				if ((!ANF) && strcmp(Str1, Str2))
-					break;
+					strcpy(Str2, Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs]);
+					TrimSignalName(Str2);
 
-				if (NewSignalIndex == -1)
-					if (Circuit->Signals[SignalIndex]->ToBeSecured)
+					if ((!ANF) && strcmp(Str1, Str2))
+						break;
+
+					if (MUX2_UnsecureSelect && LMDPL && (!i)) // only for MUX2 LMDPL with unsecure select signal
 					{
-						NewSignalIndex = AddSignal(Circuit, (char*)"");
-						Circuit->Signals[SignalIndex]->NextShare = NewSignalIndex;
-						Circuit->Signals[NewSignalIndex]->NextShare = -1;
-						Circuit->Signals[NewSignalIndex]->ToBeSecured = 1;
+						if (!Rail)
+							NewSignalIndex = Circuit->Signals[SignalIndex]->NextPhase;
+						else
+							NewSignalIndex = Circuit->Signals[SignalIndex]->NextRail;
 
-						if (Circuit->Signals[OriginalSignalIndex]->Type == SignalType_input)
+						if (NewSignalIndex == -1)
 						{
-							AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
-							AddSignalToInputs(Circuit, NewSignalIndex);
-							j++;
+							NewSignalIndex  = AddSignal(Circuit, (char*)"");
+							NextSignalIndex = AddSignal(Circuit, (char*)"");
+
+							NewCellIndex = AddCell(Library, Circuit, (char*)"", Library->LMDPL_RegPrechargeCellType);
+							Circuit->Cells[NewCellIndex]->ToBeSecured = 0;
+							Circuit->Cells[NewCellIndex]->Inputs[0] = SignalIndex;
+							Circuit->Cells[NewCellIndex]->Inputs[1] = Circuit->LMDPL_MiddleResetSignalIndex;
+							Circuit->Cells[NewCellIndex]->Inputs[2] = Circuit->ClockSignalIndex;
+
+							AddCellToSignalInputList(Circuit, SignalIndex, NewCellIndex);
+							AddCellToSignalInputList(Circuit, Circuit->LMDPL_MiddleResetSignalIndex, NewCellIndex);
+							AddCellToSignalInputList(Circuit, Circuit->ClockSignalIndex, NewCellIndex);
+
+							Circuit->Cells[NewCellIndex]->Outputs[0] = NewSignalIndex;
+							Circuit->Cells[NewCellIndex]->Outputs[1] = NextSignalIndex;
+
+							Circuit->Signals[NewSignalIndex]->Output = NewCellIndex;
+							Circuit->Signals[NextSignalIndex]->Output = NewCellIndex;
+
+							Circuit->Signals[SignalIndex]->NextPhase = NewSignalIndex;
+							Circuit->Signals[NewSignalIndex]->NextRail = NextSignalIndex;
+							Circuit->Signals[NewSignalIndex]->NextPhase = -1;
+							Circuit->Signals[NextSignalIndex]->NextRail = NewSignalIndex;
+							Circuit->Signals[NextSignalIndex]->NextPhase = -1;
+
+							if (Circuit->Signals[SignalIndex]->NextRail != -1)
+								Circuit->Signals[Circuit->Signals[SignalIndex]->NextRail]->NextPhase = NewSignalIndex;
 						}
 						else
-						if (Circuit->Signals[OriginalSignalIndex]->Type == SignalType_output)
 						{
-							AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
-							AddSignalToOutputs(Circuit, NewSignalIndex);
-							j++;
+							if (!Rail)
+								NextSignalIndex = Circuit->Signals[NewSignalIndex]->NextRail;
+							else
+								NextSignalIndex = Circuit->Signals[NewSignalIndex]->NextPhase;
 						}
 					}
 					else
-						NewSignalIndex = 0; // constant 0
+					{
+						if (NewSignalIndex == -1)
+						{
+							if (Circuit->Signals[SignalIndex]->ToBeSecured)
+							{
+								NewSignalIndex = AddSignal(Circuit, (char*)"");
+								Circuit->Signals[NewSignalIndex]->NextShare = -1;
+								Circuit->Signals[NewSignalIndex]->ToBeSecured = 1;
 
-				AddSignalToCellInputList(Circuit, NewSignalIndex, CellIndex, -1);
-				AddCellToSignalInputList(Circuit, NewSignalIndex, CellIndex);
+								if (!Rail)  // for true rail or when the circuit is not DRP
+								{
+									Circuit->Signals[SignalIndex]->NextShare = NewSignalIndex;
+									Circuit->Signals[NewSignalIndex]->NextRail = -1;
 
-				SignalIndex = NewSignalIndex;
-				NewSignalIndex = Circuit->Signals[NewSignalIndex]->NextShare;
+									if ((LMDPL) && (Circuit->Signals[SignalIndex]->NextRail != -1))
+										Circuit->Signals[Circuit->Signals[SignalIndex]->NextRail]->NextShare = NewSignalIndex;
+								}
+								else // for the false rail in DRP circuits
+								{
+									Circuit->Signals[SignalIndex]->NextRail = NewSignalIndex;
+									Circuit->Signals[NewSignalIndex]->NextRail = SignalIndex;
+								}
+
+								if ((Circuit->Signals[OriginalSignalIndex]->Type == SignalType_input) && (!LMDPL))
+								{
+									AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
+									AddSignalToInputs(Circuit, NewSignalIndex);
+									j++;
+								}
+								else
+								if ((Circuit->Signals[OriginalSignalIndex]->Type == SignalType_output) && (!Rail))
+								{
+									AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
+									AddSignalToOutputs(Circuit, NewSignalIndex);
+									j++;
+								}
+
+								NextSignalIndex = -1;
+							}
+							else
+							{
+								NewSignalIndex = 0; // constant 0
+								NextSignalIndex = Circuit->Signals[NewSignalIndex]->NextShare;
+							}
+						}
+						else
+						{
+							if ((!LMDPL) || (Rail))
+								NextSignalIndex = Circuit->Signals[NewSignalIndex]->NextShare;
+							else
+								NextSignalIndex = Circuit->Signals[NewSignalIndex]->NextRail;
+						}
+
+						if (Circuit->Signals[NewSignalIndex]->Type == SignalType_constant)
+							if (Rail) // it is the false rail of a DRP circuit
+							{
+								NewSignalIndex = Circuit->LMDPL_PreCharge1SignalIndex; // set the rail of the constant signal to pre1
+								NextSignalIndex = Circuit->Signals[NewSignalIndex]->NextShare;
+							}
+					}
+
+					AddSignalToCellInputList(Circuit, NewSignalIndex, CellIndex, -1);
+					AddCellToSignalInputList(Circuit, NewSignalIndex, CellIndex);
+
+					SignalIndex = NewSignalIndex;
+					NewSignalIndex = NextSignalIndex;
+				}
 			}
 		}
 	}
@@ -3699,6 +3874,32 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 	free(Buffer_Int);
 
 	//--------------------------------------------------------------------
+
+	if (LMDPL)
+	{
+		// adding mid_rst signal to the signals of the LMDPL cell
+
+		if ((Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs > Circuit->Cells[CellIndex]->NumberOfInputs) &&
+			(!strcmp(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs], LibraryLMDPL_MiddleResetName)))
+		{
+			AddSignalToCellInputList(Circuit, Circuit->LMDPL_MiddleResetSignalIndex, CellIndex, -1);
+			AddCellToSignalInputList(Circuit, Circuit->LMDPL_MiddleResetSignalIndex, CellIndex);
+		}
+
+		if ((Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs > Circuit->Cells[CellIndex]->NumberOfInputs) &&
+			(!strcmp(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs], LibraryLMDPL_PowerUpResetName)))
+		{
+			AddSignalToCellInputList(Circuit, Circuit->LMDPL_PowerUpResetSignalIndex, CellIndex, -1);
+			AddCellToSignalInputList(Circuit, Circuit->LMDPL_PowerUpResetSignalIndex, CellIndex);
+		}
+
+		if ((Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs > Circuit->Cells[CellIndex]->NumberOfInputs) &&
+			(!strcmp(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs], LibraryLMDPL_EnableName)))
+		{
+			AddSignalToCellInputList(Circuit, Circuit->LMDPL_PreCharge1SignalIndex, CellIndex, -1);
+			AddCellToSignalInputList(Circuit, Circuit->LMDPL_PreCharge1SignalIndex, CellIndex);
+		}
+	}
 
 	// adding the clock signal to the signals of the cell
 
@@ -3730,28 +3931,53 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 
 			j = 1;
 			NewSignalIndex = Circuit->Signals[SignalIndex]->NextShare;
-			for (d = 1; d <= SecurityOrder; d++)
+			for (d = 1;d <= SecurityOrder;d++)
 			{
-				if (NewSignalIndex == -1)
+				for (Rail = 0; Rail <= LMDPL; Rail++)
 				{
-					NewSignalIndex = AddSignal(Circuit, (char*)"");
-					Circuit->Signals[SignalIndex]->NextShare = NewSignalIndex;
-					Circuit->Signals[NewSignalIndex]->NextShare = -1;
-					Circuit->Signals[NewSignalIndex]->ToBeSecured = 1;
-
-					if (Circuit->Signals[OriginalSignalIndex]->Type == SignalType_output)
+					if (NewSignalIndex == -1)
 					{
-						AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
-						AddSignalToOutputs(Circuit, NewSignalIndex);
-						j++;
+						NewSignalIndex = AddSignal(Circuit, (char*)"");
+						Circuit->Signals[NewSignalIndex]->NextShare = -1;
+						Circuit->Signals[NewSignalIndex]->ToBeSecured = 1;
+
+						if (!Rail)  // for true rail or when the circuit is not DRP
+						{
+							Circuit->Signals[SignalIndex]->NextShare = NewSignalIndex;
+							Circuit->Signals[NewSignalIndex]->NextRail = -1;
+
+							if ((LMDPL) && (Circuit->Signals[SignalIndex]->NextRail != -1))
+								Circuit->Signals[Circuit->Signals[SignalIndex]->NextRail]->NextShare = NewSignalIndex;
+						}
+						else // for the false rail in DRP circuits
+						{
+							Circuit->Signals[SignalIndex]->NextRail = NewSignalIndex;
+							Circuit->Signals[NewSignalIndex]->NextRail = SignalIndex;
+						}
+
+						if ((Circuit->Signals[OriginalSignalIndex]->Type == SignalType_output) && (!Rail))
+						{
+							AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
+							AddSignalToOutputs(Circuit, NewSignalIndex);
+							j++;
+						}
+
+						NextSignalIndex = -1;
 					}
+					else
+					{
+						if ((!LMDPL) || (Rail))
+							NextSignalIndex = Circuit->Signals[NewSignalIndex]->NextShare;
+						else
+							NextSignalIndex = Circuit->Signals[NewSignalIndex]->NextRail;
+					}
+
+					AddSignalToCellOutputList(Circuit, NewSignalIndex, CellIndex);
+					Circuit->Signals[NewSignalIndex]->Output = CellIndex;
+
+					SignalIndex = NewSignalIndex;
+					NewSignalIndex = NextSignalIndex;
 				}
-
-				AddSignalToCellOutputList(Circuit, NewSignalIndex, CellIndex);
-				Circuit->Signals[NewSignalIndex]->Output = CellIndex;
-
-				SignalIndex = NewSignalIndex;
-				NewSignalIndex = Circuit->Signals[NewSignalIndex]->NextShare;
 			}
 		}
 		else
@@ -3764,6 +3990,28 @@ int ReplaceCelltoSCA(CircuitStruct* Circuit, LibraryStruct* Library, int CellInd
 	free(Str1);
 	free(Str2);
 	free(SignalName);
+	return(1);
+}
+
+int ReplaceUnMaskedCelltoLMDPL(CircuitStruct* Circuit, LibraryStruct* Library, int CellIndex, char SecurityOrder, char* Scheme)
+{
+	Circuit->Cells[CellIndex]->OrigType = Circuit->Cells[CellIndex]->Type;
+	Circuit->Cells[CellIndex]->Type = Library->LMDPL_Reg_sr_CellType;
+
+	if ((Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs > Circuit->Cells[CellIndex]->NumberOfInputs) &&
+		(!strcmp(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs], LibraryLMDPL_PowerUpResetName)))
+	{
+		AddSignalToCellInputList(Circuit, Circuit->LMDPL_PowerUpResetSignalIndex, CellIndex, -1);
+		AddCellToSignalInputList(Circuit, Circuit->LMDPL_PowerUpResetSignalIndex, CellIndex);
+	}
+
+	if ((Library->CellTypes[Circuit->Cells[CellIndex]->Type]->NumberOfInputs > Circuit->Cells[CellIndex]->NumberOfInputs) &&
+		(!strcmp(Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Inputs[Circuit->Cells[CellIndex]->NumberOfInputs], LibraryLMDPL_EnableName)))
+	{
+		AddSignalToCellInputList(Circuit, Circuit->LMDPL_PreCharge1SignalIndex, CellIndex, -1);
+		AddCellToSignalInputList(Circuit, Circuit->LMDPL_PreCharge1SignalIndex, CellIndex);
+	}
+
 	return(1);
 }
 
@@ -3941,6 +4189,9 @@ void NullifyNextShares(CircuitStruct* Circuit)
 				Circuit->Signals[SignalIndex]->NextShare = 0; // refering to signal constant 0
 			else
 				Circuit->Signals[SignalIndex]->NextShare = -1;
+
+			Circuit->Signals[SignalIndex]->NextRail = -1;
+			Circuit->Signals[SignalIndex]->NextPhase = -1;
 		}
 }
 
@@ -3966,6 +4217,97 @@ void AddClockGatingController(LibraryStruct* Library, CircuitStruct* Circuit, in
 	Circuit->Signals[SynchSignalIndex]->Output = CellIndex;
 }
 
+void LMDPL_AddClockController(LibraryStruct* Library, CircuitStruct* Circuit)
+{
+	int   CellIndex;
+
+	CellIndex = AddCell(Library, Circuit, (char*)"ClockControllerInst", Library->LMDPL_ClockControlCellType);
+	Circuit->Cells[CellIndex]->Inputs[0] = Circuit->ClockSignalIndex;
+	Circuit->Cells[CellIndex]->Inputs[1] = Circuit->LMDPL_PowerUpResetSignalIndex;
+
+	AddCellToSignalInputList(Circuit, Circuit->ClockSignalIndex,              CellIndex);
+	AddCellToSignalInputList(Circuit, Circuit->LMDPL_PowerUpResetSignalIndex, CellIndex);
+
+	Circuit->Cells[CellIndex]->Outputs[0] = Circuit->LMDPL_PreCharge1SignalIndex;
+	Circuit->Cells[CellIndex]->Outputs[1] = Circuit->LMDPL_PreCharge2SignalIndex;
+	Circuit->Cells[CellIndex]->Outputs[2] = Circuit->LMDPL_MiddleResetSignalIndex;
+
+	Circuit->Signals[Circuit->LMDPL_PreCharge1SignalIndex]->Output  = CellIndex;
+	Circuit->Signals[Circuit->LMDPL_PreCharge2SignalIndex]->Output  = CellIndex;
+	Circuit->Signals[Circuit->LMDPL_MiddleResetSignalIndex]->Output = CellIndex;
+}
+
+int LMDPL_AddPrechargeModules(LibraryStruct* Library, CircuitStruct* Circuit)
+{
+	int   InputIndex;
+	int   SignalIndex;
+	int   NextSignalIndex;
+	int   NewSignalIndex;
+	int   NumberOfInputs;
+	int   CellIndex;
+	char* SignalName = (char *)malloc(Max_Name_Length * sizeof(char));
+	char* TempStr = (char *)malloc(Max_Name_Length * sizeof(char));
+	char* CellName = (char *)malloc(Max_Name_Length * sizeof(char));
+	int   PrechargeCounter;
+	int   i, j;
+	char  Rail;
+
+	PrechargeCounter = 0;
+	NumberOfInputs = Circuit->NumberOfInputs;
+	for (InputIndex = 0;InputIndex < NumberOfInputs;InputIndex++)
+	{
+		SignalIndex = Circuit->Inputs[InputIndex];
+		if (Circuit->Signals[SignalIndex]->ToBeSecured)
+		{
+			strcpy(SignalName, Circuit->Signals[SignalIndex]->Name);
+			i = TrimSignalName(SignalName);
+			if (!strcmp(&SignalName[strlen(SignalName) - 3], "_s0"))
+			{
+				sprintf(TempStr, "[%d]", i);
+				SignalName[strlen(SignalName) - 3] = 0;
+				strcat(SignalName, TempStr);
+
+				j = 1;
+				while (Circuit->Signals[SignalIndex]->NextShare != -1)
+				{
+					NewSignalIndex = AddSignal(Circuit, (char*)"");
+					Circuit->Signals[NewSignalIndex]->NextShare = -1;
+					Circuit->Signals[NewSignalIndex]->ToBeSecured = 1;
+
+					AddShareIndexToSignalName(Circuit, NewSignalIndex, SignalName, j);
+					AddSignalToInputs(Circuit, NewSignalIndex);
+					j++;
+
+					SignalIndex = Circuit->Signals[SignalIndex]->NextShare;
+					NextSignalIndex = Circuit->Signals[SignalIndex]->NextRail;
+					sprintf(CellName, "PrechargeCell_%d", PrechargeCounter);
+					PrechargeCounter++;
+					CellIndex = AddCell(Library, Circuit, CellName, Library->LMDPL_PrechargeCellType);
+
+					Circuit->Cells[CellIndex]->Inputs[0] = NewSignalIndex;
+					Circuit->Cells[CellIndex]->Inputs[1] = Circuit->LMDPL_PreCharge2SignalIndex;
+
+					AddCellToSignalInputList(Circuit, NewSignalIndex, CellIndex);
+					AddCellToSignalInputList(Circuit, Circuit->LMDPL_PreCharge2SignalIndex, CellIndex);
+
+					Circuit->Cells[CellIndex]->Outputs[0] = SignalIndex;
+					Circuit->Cells[CellIndex]->Outputs[1] = NextSignalIndex;
+
+					Circuit->Signals[SignalIndex]->Output = CellIndex;
+					Circuit->Signals[NextSignalIndex]->Output = CellIndex;
+
+					SignalIndex = NextSignalIndex;
+				}
+			}
+		}
+	}
+
+	free(SignalName);
+	free(TempStr);
+	free(CellName);
+	return(PrechargeCounter);
+}
+
 int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOrder, char* Scheme, char MakePipeline)
 {
 	int		GateIndex;
@@ -3979,7 +4321,9 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 	int		OutputIndex;
 	int		RegIndex;
 	int		NewClockSignal;
+	char    LMDPL;
 
+	LMDPL = !strcmp(Scheme, "LMDPL");
 	res = RemoveUnconnectedCells(Library, Circuit, 1, 1);
 
 	if (!res)
@@ -4028,6 +4372,65 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 			// set NextShare of all signals to -1 except constants
 			NullifyNextShares(Circuit);
 
+			if (LMDPL)
+			{
+				if (Circuit->LMDPL_PowerUpResetSignalIndex < 0)
+				{
+					Circuit->LMDPL_PowerUpResetSignalIndex = AddSignal(Circuit, (char*)LMDPL_PowerUpResetSignalName);
+					AddSignalToInputs(Circuit, Circuit->LMDPL_PowerUpResetSignalIndex);
+					Circuit->Signals[Circuit->LMDPL_PowerUpResetSignalIndex]->ToBeBalanced = 0;
+					free(Circuit->Signals[Circuit->LMDPL_PowerUpResetSignalIndex]->Attribute);
+					Circuit->Signals[Circuit->LMDPL_PowerUpResetSignalIndex]->Attribute = (char*)malloc((strlen("reset") + 1) * sizeof(char));
+					strcpy(Circuit->Signals[Circuit->LMDPL_PowerUpResetSignalIndex]->Attribute, "reset");
+					printf("LMDPL power up reset signal added to the design.\n");
+				}
+
+				if (Circuit->LMDPL_PreCharge1SignalIndex < 0)
+				{
+					Circuit->LMDPL_PreCharge1SignalIndex = AddSignal(Circuit, (char*)LMDPL_PreCharge1SignalName);
+					Circuit->Signals[Circuit->LMDPL_PreCharge1SignalIndex]->WireType = WireType_Controller;
+					Circuit->Signals[Circuit->LMDPL_PreCharge1SignalIndex]->ToBeBalanced = 0;
+					free(Circuit->Signals[Circuit->LMDPL_PreCharge1SignalIndex]->Attribute);
+					Circuit->Signals[Circuit->LMDPL_PreCharge1SignalIndex]->Attribute = (char*)malloc((strlen("reset") + 1) * sizeof(char));
+					strcpy(Circuit->Signals[Circuit->LMDPL_PreCharge1SignalIndex]->Attribute, "reset");
+					printf("LMDPL pre-charge signal 1 added to the design.\n");
+				}
+
+				if (Circuit->LMDPL_PreCharge2SignalIndex < 0)
+				{
+					Circuit->LMDPL_PreCharge2SignalIndex = AddSignal(Circuit, (char*)LMDPL_PreCharge2SignalName);
+					Circuit->Signals[Circuit->LMDPL_PreCharge2SignalIndex]->WireType = WireType_Controller;
+					Circuit->Signals[Circuit->LMDPL_PreCharge2SignalIndex]->ToBeBalanced = 0;
+					free(Circuit->Signals[Circuit->LMDPL_PreCharge2SignalIndex]->Attribute);
+					Circuit->Signals[Circuit->LMDPL_PreCharge2SignalIndex]->Attribute = (char*)malloc((strlen("reset") + 1) * sizeof(char));
+					strcpy(Circuit->Signals[Circuit->LMDPL_PreCharge2SignalIndex]->Attribute, "reset");
+					printf("LMDPL pre-charge signal 2 added to the design.\n");
+				}
+
+				if (Circuit->LMDPL_MiddleResetSignalIndex < 0)
+				{
+					Circuit->LMDPL_MiddleResetSignalIndex = AddSignal(Circuit, (char*)LMDPL_MiddleResetSignalName);
+					Circuit->Signals[Circuit->LMDPL_MiddleResetSignalIndex]->WireType = WireType_Controller;
+					Circuit->Signals[Circuit->LMDPL_MiddleResetSignalIndex]->ToBeBalanced = 0;
+					free(Circuit->Signals[Circuit->LMDPL_MiddleResetSignalIndex]->Attribute);
+					Circuit->Signals[Circuit->LMDPL_MiddleResetSignalIndex]->Attribute = (char*)malloc((strlen("reset") + 1) * sizeof(char));
+					strcpy(Circuit->Signals[Circuit->LMDPL_MiddleResetSignalIndex]->Attribute, "reset");
+					printf("LMDPL middle reset signal added to the design.\n");
+				}
+
+				if (Library->LMDPL_RegPrechargeCellType == -1)
+				{
+					printf("LMDPL Reg_Precharge cell type not defined in the library\n");
+					return(1);
+				}
+
+				if (Library->LMDPL_Reg_sr_CellType == -1)
+				{
+					printf("LMDPL Reg_sr cell type not defined in the library\n");
+					return(1);
+				}
+			}
+
 			// replace the cells with their SCA-resistant variant
 			NumberOfReplacedCells = 0;
 			for (DepthIndex = 1;DepthIndex <= Circuit->MaxDepth;DepthIndex++)
@@ -4062,6 +4465,8 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 						printf("cell \"%s\" should be secured, but no SCA-resistant cell type is defined for \"%s\"\n", Circuit->Cells[CellIndex]->Name, Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Cases[0]);
 						return(1);
 					}
+				else if (LMDPL)
+					NumberOfReplacedCells += ReplaceUnMaskedCelltoLMDPL(Circuit, Library, CellIndex, SecurityOrder, Scheme);
 			}
 
 			printf("%d register(s) are replaced with the SCA-resistant variant\n", NumberOfReplacedCells);
@@ -4255,6 +4660,25 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 					AddClockGatingController(Library, Circuit, NewClockSignal);
 					printf("clock signal of registers changed and a clock-gated circuity in %d steps is added\n", Circuit->MaxDepth + (Circuit->NumberOfRegs ? 1 : 0));
 
+					res = MakeCircuitDepth(Library, Circuit);
+				}
+			}
+
+			if (LMDPL)
+			{
+				if ((!res) && (Library->LMDPL_ClockControlCellType == -1))
+				{
+					printf("Clock Control celltype not defined in the library\n");
+					res = 1;
+				}
+
+				if (!res)
+				{
+					LMDPL_AddClockController(Library, Circuit);
+					printf("LMDPL clock contoller module added to the circuit\n");
+
+					NumberOfAdded = LMDPL_AddPrechargeModules(Library, Circuit);
+					printf("%d Precharge module(s) added to the circuit\n", NumberOfAdded);
 					res = MakeCircuitDepth(Library, Circuit);
 				}
 			}
@@ -5425,7 +5849,8 @@ void WriteVerilgCell(FILE *OutputFile, int CellIndex, char* Scheme, char Securit
 
 			if ((Library->CellTypes[Circuit->Cells[CellIndex]->Type]->Type & GateType_SCA) &&
 				(Circuit->Cells[CellIndex]->Type != Library->RegBufferCellType) &&
-				(Circuit->Cells[CellIndex]->Type != Library->RegSCABufferCellType))
+				(Circuit->Cells[CellIndex]->Type != Library->RegSCABufferCellType) &&
+				(strcmp(Scheme, "LMDPL")))
 			{
 				fprintf(OutputFile, "#(");
 				if (!strcmp(Scheme, "GHPC"))

@@ -4,44 +4,44 @@ USE ieee.std_logic_1164.ALL;
 USE ieee.numeric_std.ALL;
 USE ieee.math_real.ALL;
 
-ENTITY tb_LED_HPC2_Pipeline_d1 IS
-END tb_LED_HPC2_Pipeline_d1;
+ENTITY tb_AES_HPC2_Pipeline_d1 IS
+END tb_AES_HPC2_Pipeline_d1;
  
-ARCHITECTURE behavior OF tb_LED_HPC2_Pipeline_d1 IS 
+ARCHITECTURE behavior OF tb_AES_HPC2_Pipeline_d1 IS 
  
-	constant fresh_size   : integer := 64;
-	constant AddedLatency : integer := 4;
+	constant fresh_size   : integer := 136;
+	constant AddedLatency : integer := 8;
 
 
    --Inputs
 	constant fresh_byte_size : integer := integer(ceil(real(fresh_size)/real(8)));
 
    signal clk : std_logic := '0';
-   signal IN_reset : std_logic := '0';
-   signal IN_plaintext_s0 : std_logic_vector(63 downto 0) := (others => '0');
-   signal IN_plaintext_s1 : std_logic_vector(63 downto 0) := (others => '0');
-   signal IN_key_s0 : std_logic_vector(127 downto 0) := (others => '0');
-   signal IN_key_s1 : std_logic_vector(127 downto 0) := (others => '0');
+   signal reset : std_logic := '0';
+   signal plaintext_s0 : std_logic_vector(127 downto 0) := (others => '0');
+   signal plaintext_s1 : std_logic_vector(127 downto 0) := (others => '0');
+   signal key_s0 : std_logic_vector(127 downto 0) := (others => '0');
+   signal key_s1 : std_logic_vector(127 downto 0) := (others => '0');
 	
-   signal IN_plaintext : std_logic_vector(63 downto 0) := (others => '0');
-   signal IN_key : std_logic_vector(127 downto 0) := (others => '0');
+   signal plaintext : std_logic_vector(127 downto 0) := (others => '0');
+   signal key : std_logic_vector(127 downto 0) := (others => '0');
 
  	--Outputs
-   signal OUT_ciphertext_s0 : std_logic_vector(63 downto 0);
-   signal OUT_ciphertext_s1 : std_logic_vector(63 downto 0);
+   signal ciphertext_s0 : std_logic_vector(127 downto 0);
+   signal ciphertext_s1 : std_logic_vector(127 downto 0);
    signal Fresh     : std_logic_vector(8*fresh_byte_size-1 downto 0) := (others => '0');
 
-   signal Mask_P : std_logic_vector(63 downto 0) := (others => '0');
+   signal Mask_P : std_logic_vector(127 downto 0) := (others => '0');
    signal Mask_K : std_logic_vector(127 downto 0) := (others => '0');
 
 
-   signal OUT_ciphertext : std_logic_vector(63 downto 0);
-   signal OUT_done : std_logic;
+   signal ciphertext : std_logic_vector(127 downto 0);
+   signal done : std_logic;
 
    -- Clock period definitions
    constant clk_period : time := 10 ns;
 
-    constant mask_byte_size : integer := fresh_byte_size+8+16;
+    constant mask_byte_size : integer := fresh_byte_size+16+16;
  
     type INT_ARRAY  is array (integer range <>) of integer;
     type REAL_ARRAY is array (integer range <>) of real;
@@ -55,7 +55,7 @@ BEGIN
     maskgen: process
          variable seed1, seed2: positive;        -- seed values for random generator
          variable rand: REAL_ARRAY(mask_byte_size-1 downto 0); -- random real-number value in range 0 to 1.0  
-         variable range_of_rand : real := 256.0; -- the range of random values created will be 0 to +1600.
+         variable range_of_rand : real := 256.0; -- the range of random values created will be 0 to +1000.
     begin
         
         FOR i in 0 to mask_byte_size-1 loop
@@ -75,37 +75,38 @@ BEGIN
     end GENERATE;
     
 	 gen_2:
-    for i in 0 to 7 GENERATE
+    for i in 0 to 15 GENERATE
         Mask_P(8*(i+1)-1 downto 8*i) <= mm(fresh_byte_size+i);
     end GENERATE;
 
 	 gen_3:
     for i in 0 to 15 GENERATE
-        Mask_K(8*(i+1)-1 downto 8*i) <= mm(fresh_byte_size+8+i);
+        Mask_K(8*(i+1)-1 downto 8*i) <= mm(fresh_byte_size+16+i);
     end GENERATE;
 
+ 
 
 
-   uut: entity work.LED_HPC2_Pipeline_d1 PORT MAP (
+   uut: entity work.AES_HPC2_Pipeline_d1 PORT MAP (
           clk => clk,
-          IN_reset => IN_reset,
-          IN_plaintext_s0 => IN_plaintext_s0,
-          IN_plaintext_s1 => IN_plaintext_s1,
-          IN_key_s0 => IN_key_s0,
-          IN_key_s1 => IN_key_s1,
+          reset => reset,
+          plaintext_s0 => plaintext_s0,
+          plaintext_s1 => plaintext_s1,
+          key_s0 => key_s0,
+          key_s1 => key_s1,
 			 Fresh  => Fresh(fresh_size-1 downto 0),
-          OUT_ciphertext_s0 => OUT_ciphertext_s0,
-          OUT_ciphertext_s1 => OUT_ciphertext_s1,
-          OUT_done => OUT_done
+          ciphertext_s0 => ciphertext_s0,
+          ciphertext_s1 => ciphertext_s1,
+          done => done
         );
 
-	IN_plaintext_s0 <= IN_plaintext XOR Mask_P;
-	IN_plaintext_s1 <= Mask_P;
+	plaintext_s0 <= plaintext XOR Mask_P;
+	plaintext_s1 <= Mask_P;
 	
-	IN_key_s0 <= IN_key XOR Mask_K;
-	IN_key_s1 <= Mask_K;
+	key_s0 <= key XOR Mask_K;
+	key_s1 <= Mask_K;
 
-   OUT_ciphertext <= OUT_ciphertext_s0 XOR OUT_ciphertext_s1;
+   ciphertext <= ciphertext_s0 XOR ciphertext_s1;
 
    -- Clock process definitions
    clk_process :process
@@ -120,44 +121,46 @@ BEGIN
    -- Stimulus process
    stim_proc: process
    begin		
-      -- hold IN_reset state for 100 ns.
+      -- hold reset state for 100 ns.
       wait for clk_period;	
-		IN_reset	<= '1';
-		IN_key 		<= x"F589DA3F6BB38D23E776CDE49EC7CB62";
+		reset	<= '1';
 
 		for i in 0 to AddedLatency loop
 			if ((i mod 2) = 0) then
-				IN_plaintext 	<= x"B9B11902E6C14E39";
+				plaintext 	<= x"3243f6a8885a308d313198a2e0370734";
+				key 			<= x"2b7e151628aed2a6abf7158809cf4f3c";
 			else
-				IN_plaintext 	<= x"0000000000000000";
+				plaintext 	<= (others => '0');
+				key 			<= (others => '0');
 			end if;
       
 			wait for clk_period*1;
 		end loop;	
 	
-		IN_reset	<= '0';
-		wait for clk_period*(AddedLatency+1);
+		reset	<= '0';
+		wait for clk_period*(AddedLatency + 1);
 
 		for i in 0 to AddedLatency loop
-			wait until rising_edge(clk) and (OUT_done = '1'); 
-
+			wait until rising_edge(clk) and (done = '1'); 
+			
 			if ((i mod 2) = 0) then
-				if (OUT_ciphertext = x"C4DF3176EF3059C8") then
+				if (ciphertext = x"3925841d02dc09fbdc118597196a0b32") then
 					report "---------- Passed ----------";
 				else
 					report "---------- Failed ----------";
 				end if;	
 			else
-				if (OUT_ciphertext = x"334c89d55c59c617") then
+				if (ciphertext = x"66e94bd4ef8a2c3b884cfa59ca342b2e") then
 					report "---------- Passed ----------";
 				else
 					report "---------- Failed ----------";
 				end if;	
 			end if;
-		end loop;			
+		end loop;
+
+
 
       wait;
    end process;
-
 
 END;

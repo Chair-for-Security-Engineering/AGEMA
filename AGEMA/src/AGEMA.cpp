@@ -79,6 +79,7 @@ int main(int argc, char *argv[])
 			printf("                 : GHPC      -> Generic Hardware Private Circuit\n");
 			printf("                 : GHPCLL    -> Generic Hardware Private Circuit with Low Latency\n");
 			printf("                 : COMAR     -> Composable Gadgets with Reused Fresh Masks\n");
+			printf("                 : LMDPL     -> LUT-Masked Dual-rail with Precharge Logic\n");
 			printf("\n");
 			printf("\n");
 			printf("options:\n");
@@ -162,7 +163,8 @@ int main(int argc, char *argv[])
 					strcmp(Scheme, "HPC3") &&
 					strcmp(Scheme, "GHPC") &&
 					strcmp(Scheme, "GHPCLL") &&
-					strcmp(Scheme, "COMAR"))
+					strcmp(Scheme, "COMAR") &&
+					strcmp(Scheme, "LMDPL"))
 				{
 					printf("scheme \"%s\" not known\n", Scheme);
 					return 1;
@@ -266,11 +268,11 @@ int main(int argc, char *argv[])
 
 	//--------------------------------------
 
-	if (((!strcmp(Scheme, "GHPC")) || (!strcmp(Scheme, "GHPCLL")) ||
-		 (!strcmp(Scheme, "COMAR"))) &&
+	if (((!strcmp(Scheme, "GHPC"))  || (!strcmp(Scheme, "GHPCLL")) ||
+		 (!strcmp(Scheme, "COMAR")) || (!strcmp(Scheme, "LMDPL"))) &&
 		(SecurityOrder > 1))
 	{
-		printf("schemes GHPC, GHPCLL, and COMAR support only first-order security\n");
+		printf("schemes GHPC, GHPCLL, COMAR, and LMDPL support only first-order security\n");
 		return 1;
 	}
 
@@ -279,6 +281,12 @@ int main(int argc, char *argv[])
 	{
 		printf("method ANF can only be comabined with schemes GHPC and GHPCLL\n");
 		return 1;
+	}
+
+	if ((!strcmp(Scheme, "LMDPL")) && (MakePipeline == 0))
+	{
+		printf("it does not make sense to use clock gating with LMDPL scheme. a pipeline circuit is built.\n");
+		MakePipeline = 1;
 	}
 
 	strcpy(LibraryName, Scheme);

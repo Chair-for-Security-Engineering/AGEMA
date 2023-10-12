@@ -4,39 +4,39 @@ USE ieee.std_logic_1164.ALL;
 USE ieee.numeric_std.ALL;
 USE ieee.math_real.ALL;
 
-ENTITY tb_LED_HPC2_Pipeline_d1 IS
-END tb_LED_HPC2_Pipeline_d1;
+ENTITY tb_Midori64_LMDPL_d1 IS
+END tb_Midori64_LMDPL_d1;
  
-ARCHITECTURE behavior OF tb_LED_HPC2_Pipeline_d1 IS 
+ARCHITECTURE behavior OF tb_Midori64_LMDPL_d1 IS 
  
-	constant fresh_size   : integer := 64;
-	constant AddedLatency : integer := 4;
-
+	constant fresh_size   : integer := 256;
 
    --Inputs
 	constant fresh_byte_size : integer := integer(ceil(real(fresh_size)/real(8)));
 
+   signal Po_rst : std_logic;
    signal clk : std_logic := '0';
-   signal IN_reset : std_logic := '0';
-   signal IN_plaintext_s0 : std_logic_vector(63 downto 0) := (others => '0');
-   signal IN_plaintext_s1 : std_logic_vector(63 downto 0) := (others => '0');
-   signal IN_key_s0 : std_logic_vector(127 downto 0) := (others => '0');
-   signal IN_key_s1 : std_logic_vector(127 downto 0) := (others => '0');
+   signal reset : std_logic := '0';
+   signal enc_dec : std_logic := '0';
+   signal DataIn_s0 : std_logic_vector(63 downto 0) := (others => '0');
+   signal DataIn_s1 : std_logic_vector(63 downto 0) := (others => '0');
+   signal key_s0 : std_logic_vector(127 downto 0) := (others => '0');
+   signal key_s1 : std_logic_vector(127 downto 0) := (others => '0');
 	
-   signal IN_plaintext : std_logic_vector(63 downto 0) := (others => '0');
-   signal IN_key : std_logic_vector(127 downto 0) := (others => '0');
+   signal DataIn : std_logic_vector(63 downto 0) := (others => '0');
+   signal key : std_logic_vector(127 downto 0) := (others => '0');
 
  	--Outputs
-   signal OUT_ciphertext_s0 : std_logic_vector(63 downto 0);
-   signal OUT_ciphertext_s1 : std_logic_vector(63 downto 0);
+   signal DataOut_s0 : std_logic_vector(63 downto 0);
+   signal DataOut_s1 : std_logic_vector(63 downto 0);
    signal Fresh     : std_logic_vector(8*fresh_byte_size-1 downto 0) := (others => '0');
 
    signal Mask_P : std_logic_vector(63 downto 0) := (others => '0');
    signal Mask_K : std_logic_vector(127 downto 0) := (others => '0');
 
 
-   signal OUT_ciphertext : std_logic_vector(63 downto 0);
-   signal OUT_done : std_logic;
+   signal DataOut : std_logic_vector(63 downto 0);
+   signal done : std_logic;
 
    -- Clock period definitions
    constant clk_period : time := 10 ns;
@@ -65,6 +65,7 @@ BEGIN
         end loop;
 		  
         wait for clk_period;
+        wait for clk_period;
     end process;
 
     ---------
@@ -86,26 +87,28 @@ BEGIN
 
 
 
-   uut: entity work.LED_HPC2_Pipeline_d1 PORT MAP (
+   uut: entity work.Midori64_LMDPL_Pipeline_d1 PORT MAP (
+          Po_rst  => Po_rst,
           clk => clk,
-          IN_reset => IN_reset,
-          IN_plaintext_s0 => IN_plaintext_s0,
-          IN_plaintext_s1 => IN_plaintext_s1,
-          IN_key_s0 => IN_key_s0,
-          IN_key_s1 => IN_key_s1,
+          reset => reset,
+          enc_dec => enc_dec,
+          DataIn_s0 => DataIn_s0,
+          DataIn_s1 => DataIn_s1,
+          key_s0 => key_s0,
+          key_s1 => key_s1,
 			 Fresh  => Fresh(fresh_size-1 downto 0),
-          OUT_ciphertext_s0 => OUT_ciphertext_s0,
-          OUT_ciphertext_s1 => OUT_ciphertext_s1,
-          OUT_done => OUT_done
+          DataOut_s0 => DataOut_s0,
+          DataOut_s1 => DataOut_s1,
+          done => done
         );
 
-	IN_plaintext_s0 <= IN_plaintext XOR Mask_P;
-	IN_plaintext_s1 <= Mask_P;
+	DataIn_s0 <= DataIn XOR Mask_P;
+	DataIn_s1 <= Mask_P;
 	
-	IN_key_s0 <= IN_key XOR Mask_K;
-	IN_key_s1 <= Mask_K;
+	key_s0 <= key XOR Mask_K;
+	key_s1 <= Mask_K;
 
-   OUT_ciphertext <= OUT_ciphertext_s0 XOR OUT_ciphertext_s1;
+   DataOut <= DataOut_s0 XOR DataOut_s1;
 
    -- Clock process definitions
    clk_process :process
@@ -120,44 +123,52 @@ BEGIN
    -- Stimulus process
    stim_proc: process
    begin		
-      -- hold IN_reset state for 100 ns.
-      wait for clk_period;	
-		IN_reset	<= '1';
-		IN_key 		<= x"F589DA3F6BB38D23E776CDE49EC7CB62";
+      Po_rst <= '1';
+		
+      wait for clk_period*20;
 
-		for i in 0 to AddedLatency loop
-			if ((i mod 2) = 0) then
-				IN_plaintext 	<= x"B9B11902E6C14E39";
-			else
-				IN_plaintext 	<= x"0000000000000000";
-			end if;
-      
-			wait for clk_period*1;
-		end loop;	
+      Po_rst <= '0';
+
+      enc_dec <= '0';
+		reset	  <= '1';
+		key 	  <= x"687ded3b3c85b3f35b1009863e2a8cbf";
+		DataIn  <= x"42c20fd3b586879e";
+		wait for clk_period*2;
 	
-		IN_reset	<= '0';
-		wait for clk_period*(AddedLatency+1);
+		reset	<= '0';
+		wait for clk_period*2;
 
-		for i in 0 to AddedLatency loop
-			wait until rising_edge(clk) and (OUT_done = '1'); 
+		wait until falling_edge(clk) and (done = '1'); 
+		wait for clk_period*1;
 
-			if ((i mod 2) = 0) then
-				if (OUT_ciphertext = x"C4DF3176EF3059C8") then
-					report "---------- Passed ----------";
-				else
-					report "---------- Failed ----------";
-				end if;	
-			else
-				if (OUT_ciphertext = x"334c89d55c59c617") then
-					report "---------- Passed ----------";
-				else
-					report "---------- Failed ----------";
-				end if;	
-			end if;
-		end loop;			
+		if (DataOut = x"66bcdc6270d901cd") then
+			report "---------- Passed ----------";
+		else
+			report "---------- Failed ----------";
+		end if;	
+
+		wait until falling_edge(clk); 
+		wait for clk_period*1;
+
+      enc_dec <= '1';
+		reset	  <= '1';
+		key 	  <= x"687ded3b3c85b3f35b1009863e2a8cbf";
+		DataIn  <= x"66bcdc6270d901cd";
+		wait for clk_period*2;
+	
+		reset	<= '0';
+		wait for clk_period*2;
+
+		wait until falling_edge(clk) and (done = '1'); 
+		wait for clk_period*1;
+
+		if (DataOut = x"42c20fd3b586879e") then
+			report "---------- Passed ----------";
+		else
+			report "---------- Failed ----------";
+		end if;	
 
       wait;
    end process;
-
 
 END;

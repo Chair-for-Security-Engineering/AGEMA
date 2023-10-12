@@ -778,3 +778,106 @@ SCAGate
 1 c d+1
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%% LMDPLcells %%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Library
+LMDPL
+
+SCAGate
+0
+1 and_LMDPL
+5 a 3 b 3 mid_rst 1 clk 1 r 1
+1 c 3
+nonlinear_LMDPL 1 .CONF(2'b00)
+
+SCAGate
+0
+1 nand_LMDPL
+5 a 3 b 3 mid_rst 1 clk 1 r 1
+1 c 3
+nonlinear_LMDPL 1 .CONF(2'b01)
+
+SCAGate
+0
+1 or_LMDPL
+5 a 3 b 3 mid_rst 1 clk 1 r 1
+1 c 3
+nonlinear_LMDPL 1 .CONF(2'b11)
+
+SCAGate
+0
+1 nor_LMDPL
+5 a 3 b 3 mid_rst 1 clk 1 r 1
+1 c 3
+nonlinear_LMDPL 1 .CONF(2'b10)
+
+SCAGate
+0
+1 xor_LMDPL
+2 a 3 b 3
+1 c 3
+linear_LMDPL 1 .CONF(1'b0)
+
+SCAGate
+0
+1 xnor_LMDPL
+2 a 3 b 3
+1 c 3
+linear_LMDPL 1 .CONF(1'b1)
+
+SCAGate
+0
+1 not_LMDPL
+1 x 3
+1 y 3
+0
+
+SCAGate
+0
+1 mux2_LMDPL
+6 s 3 b 3 a 3 mid_rst 1 clk 1 r 1
+1 c 3
+0
+
+SCAGate
+0
+1 mux2_masked_LMDPL
+3 s 3 b 3 a 3
+1 c 3
+0
+
+SCAReg
+1
+1 reg_LMDPL
+4 D 3 Po_rst 1 en 1 clk 1
+1 Q 3
+0
+
+Reg_reg_sr_LMDPL
+1
+1 reg_sr_LMDPL
+4 D clk Po_rst en
+2 Q QN
+
+Precharge
+0
+1 Precharger
+2 D pre 
+2 Q[1] Q[2]
+
+Reg_Precharge
+0
+1 Precharger_reg
+3 D mid_rst clk 
+2 Q[1] Q[2]
+
+
+ClockControl
+0
+1 ClockController_LMDPL
+2 clk Po_rst
+3 pre1 pre2 mid_rst
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+

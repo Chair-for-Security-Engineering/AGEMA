@@ -134,14 +134,13 @@ BEGIN
       -- hold IN_reset state for 100 ns.
       wait for clk_period;	
 		IN_reset	<= '1';
+		IN_key 		<= x"F589DA3F6BB38D23E776CDE49EC7CB62";
 
 		for i in 0 to AddedLatency loop
 			if ((i mod 2) = 0) then
 				IN_plaintext 	<= x"B9B11902E6C14E39";
-				IN_key 		<= x"F589DA3F6BB38D23E776CDE49EC7CB62";
 			else
 				IN_plaintext 	<= x"0000000000000000";
-				IN_key 		<= x"00000000000000000000000000000000";
 			end if;
       
 			wait for clk_period*1;

@@ -1,0 +1,620 @@
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY MyXOR IS
+   PORT (
+      A     : IN  STD_LOGIC;
+      B     : IN  STD_LOGIC;
+      C     : OUT STD_LOGIC
+   );
+END MyXOR;
+
+ARCHITECTURE Behavioral OF MyXOR IS
+BEGIN
+	C <= A XOR B;
+END Behavioral;
+
+--------------------------------------------------------
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY MyXNOR IS
+   PORT (
+      A     : IN  STD_LOGIC;
+      B     : IN  STD_LOGIC;
+      C     : OUT STD_LOGIC
+   );
+END MyXNOR;
+
+ARCHITECTURE Behavioral OF MyXNOR IS
+BEGIN
+	C <= NOT (A XOR B);
+END Behavioral;
+
+--------------------------------------------------------
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+
+ENTITY MyAND IS
+   PORT (
+      A     : IN  STD_LOGIC;
+      B     : IN  STD_LOGIC;
+      C     : OUT STD_LOGIC
+   );
+END MyAND;
+
+ARCHITECTURE Behavioral OF MyAND IS
+BEGIN
+	C <= A AND B;
+END Behavioral;
+	
+--------------------------------------------------------
+LIBRARY IEEE;
+USE IEEE.STD_LOGIC_1164.ALL;
+USE IEEE.NUMERIC_STD.ALL;
+	
+ENTITY sbox IS
+   PORT (
+      X     : IN  STD_LOGIC_VECTOR(7 DOWNTO 0);
+      Y     : OUT STD_LOGIC_VECTOR(7 DOWNTO 0)
+   );
+END sbox;
+
+ARCHITECTURE Behavioral OF sbox IS
+
+   ALIAS X7 : STD_LOGIC IS X(0);
+   ALIAS X6 : STD_LOGIC IS X(1);
+   ALIAS X5 : STD_LOGIC IS X(2);
+   ALIAS X4 : STD_LOGIC IS X(3);
+   ALIAS X3 : STD_LOGIC IS X(4);
+   ALIAS X2 : STD_LOGIC IS X(5);
+   ALIAS X1 : STD_LOGIC IS X(6);
+   ALIAS X0 : STD_LOGIC IS X(7);
+   
+   ALIAS Y7 : STD_LOGIC IS Y(0);
+   ALIAS Y6 : STD_LOGIC IS Y(1);
+   ALIAS Y5 : STD_LOGIC IS Y(2);
+   ALIAS Y4 : STD_LOGIC IS Y(3);
+   ALIAS Y3 : STD_LOGIC IS Y(4);
+   ALIAS Y2 : STD_LOGIC IS Y(5);
+   ALIAS Y1 : STD_LOGIC IS Y(6);
+   ALIAS Y0 : STD_LOGIC IS Y(7);
+
+   SIGNAL      T1,  T2,  T3,  T4,  T5,  T6,  T7,  T8,  T9  : STD_LOGIC;
+   SIGNAL T10, T11, T12, T13, T14, T15, T16, T17, T18, T19 : STD_LOGIC;
+   SIGNAL T20, T21, T22, T23, T24, T25, T26, T27           : STD_LOGIC;
+
+   SIGNAL      M1,  M2,  M3,  M4,  M5,  M6,  M7,  M8,  M9  : STD_LOGIC;
+   SIGNAL M10, M11, M12, M13, M14, M15, M16, M17, M18, M19 : STD_LOGIC;
+   SIGNAL M20, M21, M22, M23, M24, M25, M26, M27, M28, M29 : STD_LOGIC;
+   SIGNAL M30, M31, M32, M33, M34, M35, M36, M37, M38, M39 : STD_LOGIC;
+   SIGNAL M40, M41, M42, M43, M44, M45, M46, M47, M48, M49 : STD_LOGIC;
+   SIGNAL M50, M51, M52, M53, M54, M55, M56, M57, M58, M59 : STD_LOGIC;
+   SIGNAL M60, M61, M62, M63                               : STD_LOGIC;
+
+   SIGNAL L0,  L1,  L2,  L3,  L4,  L5,  L6,  L7,  L8,  L9  : STD_LOGIC;
+   SIGNAL L10, L11, L12, L13, L14, L15, L16, L17, L18, L19 : STD_LOGIC;
+   SIGNAL L20, L21, L22, L23, L24, L25, L26, L27, L28, L29 : STD_LOGIC;
+
+BEGIN
+
+   -- T1 = U0 + U3
+   XOR_T1 : ENTITY WORK.MyXOR
+   PORT MAP (X0, X3, T1);
+
+   -- T2 = U0 + U5
+   XOR_T2 : ENTITY WORK.MyXOR
+   PORT MAP (X0, X5, T2);
+
+   -- T3 = U0 + U6
+   XOR_T3 : ENTITY WORK.MyXOR
+   PORT MAP (X0, X6, T3);
+
+   -- T4 = U3 + U5
+   XOR_T4 : ENTITY WORK.MyXOR
+   PORT MAP (X3, X5, T4);
+
+   -- T5 = U4 + U6
+   XOR_T5 : ENTITY WORK.MyXOR
+   PORT MAP (X4, X6, T5);
+
+   -- T6 = T1 + T5
+   XOR_T6 : ENTITY WORK.MyXOR
+   PORT MAP (T1, T5, T6);
+
+   -- T7 = U1 + U2
+   XOR_T7 : ENTITY WORK.MyXOR
+   PORT MAP (X1, X2, T7);
+
+   -- T8 = U7 + T6
+   XOR_T8 : ENTITY WORK.MyXOR
+   PORT MAP (X7, T6, T8);
+
+   -- T9 = U7 + T7
+   XOR_T9 : ENTITY WORK.MyXOR
+   PORT MAP (X7, T7, T9);
+
+   -- T10 = T6 + T7
+   XOR_T10 : ENTITY WORK.MyXOR
+   PORT MAP (T6, T7, T10);
+
+   -- T11 = U1 + U5
+   XOR_T11 : ENTITY WORK.MyXOR
+   PORT MAP (X1, X5, T11);
+
+   -- T12 = U2 + U5
+   XOR_T12 : ENTITY WORK.MyXOR
+   PORT MAP (X2, X5, T12);
+
+   -- T13 = T3 + T4
+   XOR_T13 : ENTITY WORK.MyXOR
+   PORT MAP (T3, T4, T13);
+
+   -- T14 = T6 + T11
+   XOR_T14 : ENTITY WORK.MyXOR
+   PORT MAP (T6, T11, T14);
+
+   -- T15 = T5 + T11
+   XOR_T15 : ENTITY WORK.MyXOR
+   PORT MAP (T5, T11, T15);
+
+   -- T16 = T5 + T12
+   XOR_T16 : ENTITY WORK.MyXOR
+   PORT MAP (T5, T12, T16);
+
+   -- T17 = T9 + T16
+   XOR_T17 : ENTITY WORK.MyXOR
+   PORT MAP (T9, T16, T17);
+
+   -- T18 = U3 + U7
+   XOR_T18 : ENTITY WORK.MyXOR
+   PORT MAP (X3, X7, T18);
+
+   -- T19 = T7 + T18
+   XOR_T19 : ENTITY WORK.MyXOR
+   PORT MAP (T7, T18, T19);
+
+   -- T20 = T1 + T19
+   XOR_T20 : ENTITY WORK.MyXOR
+   PORT MAP (T1, T19, T20);
+
+   -- T21 = U6 + U7
+   XOR_T21 : ENTITY WORK.MyXOR
+   PORT MAP (X6, X7, T21);
+
+   -- T22 = T7 + T21
+   XOR_T22 : ENTITY WORK.MyXOR
+   PORT MAP (T7, T21, T22);
+
+   -- T23 = T2 + T22
+   XOR_T23 : ENTITY WORK.MyXOR
+   PORT MAP (T2, T22, T23);
+
+   -- T24 = T2 + T10
+   XOR_T24 : ENTITY WORK.MyXOR
+   PORT MAP (T2, T10, T24);
+
+   -- T25 = T20 + T17
+   XOR_T25 : ENTITY WORK.MyXOR
+   PORT MAP (T20, T17, T25);
+
+   -- T26 = T3 + T16
+   XOR_T26 : ENTITY WORK.MyXOR
+   PORT MAP (T3, T16, T26);
+
+   -- T27 = T1 + T12
+   XOR_T27 : ENTITY WORK.MyXOR
+   PORT MAP (T1, T12, T27);
+
+   -----------------------------------------------
+     
+   -- M1 = T13 x T6
+   AND_M1 : ENTITY WORK.MyAND 
+   PORT MAP (T13, T6, M1);
+   
+   -- M2 = T23 x T8
+   AND_M2 : ENTITY WORK.MyAND 
+   PORT MAP (T23, T8, M2);
+   
+   -- M3 = T14 + M1
+   XOR_M3 : ENTITY WORK.MyXOR
+   PORT MAP (T14, M1, M3);
+   
+   -- M4 = T19 x X7
+   AND_M4 : ENTITY WORK.MyAND 
+   PORT MAP (T19, X7, M4);
+   
+   -- M5 = M4 + M1
+   XOR_M5 : ENTITY WORK.MyXOR
+   PORT MAP (M4, M1, M5);
+   
+   -- M6 = T3 x T16
+   AND_M6 : ENTITY WORK.MyAND 
+   PORT MAP (T3, T16, M6);
+   
+   -- M7 = T22 x T9
+   AND_M7 : ENTITY WORK.MyAND 
+   PORT MAP (T22, T9, M7);
+   
+   -- M8 = T26 + M6
+   XOR_M8 : ENTITY WORK.MyXOR
+   PORT MAP (T26, M6, M8);
+   
+   -- M9 = T20 x T17
+   AND_M9 : ENTITY WORK.MyAND 
+   PORT MAP (T20, T17, M9);
+   
+   -- M10 = M9 + M6
+   XOR_M10 : ENTITY WORK.MyXOR
+   PORT MAP (M9, M6, M10);
+   
+   -- M11 = T1 x T15
+   AND_M11 : ENTITY WORK.MyAND 
+   PORT MAP (T1, T15, M11);
+   
+   -- M12 = T4 x T27
+   AND_M12 : ENTITY WORK.MyAND 
+   PORT MAP (T4, T27, M12);
+   
+   -- M13 = M12 + M11
+   XOR_M13 : ENTITY WORK.MyXOR
+   PORT MAP (M12, M11, M13);
+   
+   -- M14 = T2 x T10
+   AND_M14 : ENTITY WORK.MyAND 
+   PORT MAP (T2, T10, M14);
+   
+   -- M15 = M14 + M11
+   XOR_M15 : ENTITY WORK.MyXOR
+   PORT MAP (M14, M11, M15);
+   
+   -- M16 = M3 + M2
+   XOR_M16 : ENTITY WORK.MyXOR
+   PORT MAP (M3, M2, M16);
+   
+   -- M17 = M5 + T24
+   XOR_M17 : ENTITY WORK.MyXOR
+   PORT MAP (M5, T24, M17);
+   
+   -- M18 = M8 + M7
+   XOR_M18 : ENTITY WORK.MyXOR
+   PORT MAP (M8, M7, M18);
+   
+   -- M19 = M10 + M15
+   XOR_M19 : ENTITY WORK.MyXOR
+   PORT MAP (M10, M15, M19);
+   
+   -- M20 = M16 + M13
+   XOR_M20 : ENTITY WORK.MyXOR
+   PORT MAP (M16, M13, M20);
+   
+   -- M21 = M17 + M15
+   XOR_M21 : ENTITY WORK.MyXOR
+   PORT MAP (M17, M15, M21);
+   
+   -- M22 = M18 + M13
+   XOR_M22 : ENTITY WORK.MyXOR
+   PORT MAP (M18, M13, M22);
+   
+   -- M23 = M19 + T25
+   XOR_M23 : ENTITY WORK.MyXOR
+   PORT MAP (M19, T25, M23);
+   
+   -- M24 = M22 + M23
+   XOR_M24 : ENTITY WORK.MyXOR
+   PORT MAP (M22, M23, M24);
+   
+   -- M25 = M22 x M20
+   AND_M25 : ENTITY WORK.MyAND 
+   PORT MAP (M22, M20, M25);
+   
+   -- M26 = M21 + M25
+   XOR_M26 : ENTITY WORK.MyXOR
+   PORT MAP (M21, M25, M26);
+   
+   -- M27 = M20 + M21
+   XOR_M27 : ENTITY WORK.MyXOR
+   PORT MAP (M20, M21, M27);
+   
+   -- M28 = M23 + M25
+   XOR_M28 : ENTITY WORK.MyXOR
+   PORT MAP (M23, M25, M28);
+   
+   -- M29 = M28 x M27
+   AND_M29 : ENTITY WORK.MyAND 
+   PORT MAP (M28, M27, M29);
+   
+   -- M30 = M26 x M24
+   AND_M30 : ENTITY WORK.MyAND 
+   PORT MAP (M26, M24, M30);
+   
+   -- M31 = M20 x M23
+   AND_M31 : ENTITY WORK.MyAND 
+   PORT MAP (M20, M23, M31);
+   
+   -- M32 = M27 x M31
+   AND_M32 : ENTITY WORK.MyAND 
+   PORT MAP (M27, M31, M32);
+   
+   -- M33 = M27 + M25
+   XOR_M33 : ENTITY WORK.MyXOR
+   PORT MAP (M27, M25, M33);
+   
+   -- M34 = M21 x M22
+   AND_M34 : ENTITY WORK.MyAND 
+   PORT MAP (M21, M22, M34);
+   
+   -- M35 = M24 x M34
+   AND_M35 : ENTITY WORK.MyAND 
+   PORT MAP (M24, M34, M35);
+   
+   -- M36 = M24 + M25
+   XOR_M36 : ENTITY WORK.MyXOR
+   PORT MAP (M24, M25, M36);
+   
+   -- M37 = M21 + M29
+   XOR_M37 : ENTITY WORK.MyXOR
+   PORT MAP (M21, M29, M37);
+   
+   -- M38 = M32 + M33
+   XOR_M38 : ENTITY WORK.MyXOR
+   PORT MAP (M32, M33, M38);
+   
+   -- M39 = M23 + M30
+   XOR_M39 : ENTITY WORK.MyXOR
+   PORT MAP (M23, M30, M39);
+   
+   -- M40 = M35 + M36
+   XOR_M40 : ENTITY WORK.MyXOR
+   PORT MAP (M35, M36, M40);
+   
+   -- M41 = M38 + M40
+   XOR_M41 : ENTITY WORK.MyXOR
+   PORT MAP (M38, M40, M41);
+   
+   -- M42 = M37 + M39
+   XOR_M42 : ENTITY WORK.MyXOR
+   PORT MAP (M37, M39, M42);
+   
+   -- M43 = M37 + M38
+   XOR_M43 : ENTITY WORK.MyXOR
+   PORT MAP (M37, M38, M43);
+   
+   -- M44 = M39 + M40
+   XOR_M44 : ENTITY WORK.MyXOR
+   PORT MAP (M39, M40, M44);
+   
+   -- M45 = M42 + M41
+   XOR_M45 : ENTITY WORK.MyXOR
+   PORT MAP (M42, M41, M45);
+   
+   -- M46 = M44 x T6
+   AND_M46 : ENTITY WORK.MyAND 
+   PORT MAP (M44, T6, M46);
+   
+   -- M47 = M40 x T8
+   AND_M47 : ENTITY WORK.MyAND 
+   PORT MAP (M40, T8, M47);
+   
+   -- M48 = M39 x X7
+   AND_M48 : ENTITY WORK.MyAND 
+   PORT MAP (M39, X7, M48);
+   
+   -- M49 = M43 x T16
+   AND_M49 : ENTITY WORK.MyAND 
+   PORT MAP (M43, T16, M49);
+   
+   -- M50 = M38 x T9
+   AND_M50 : ENTITY WORK.MyAND 
+   PORT MAP (M38, T9, M50);
+   
+   -- M51 = M37 x T17
+   AND_M51 : ENTITY WORK.MyAND 
+   PORT MAP (M37, T17, M51);
+   
+   -- M52 = M42 x T15
+   AND_M52 : ENTITY WORK.MyAND 
+   PORT MAP (M42, T15, M52);
+   
+   -- M53 = M45 x T27
+   AND_M53 : ENTITY WORK.MyAND 
+   PORT MAP (M45, T27, M53);
+   
+   -- M54 = M41 x T10
+   AND_M54 : ENTITY WORK.MyAND 
+   PORT MAP (M41, T10, M54);
+   
+   -- M55 = M44 x T13
+   AND_M55 : ENTITY WORK.MyAND 
+   PORT MAP (M44, T13, M55);
+   
+   -- M56 = M40 x T23
+   AND_M56 : ENTITY WORK.MyAND 
+   PORT MAP (M40, T23, M56);
+   
+   -- M57 = M39 x T19
+   AND_M57 : ENTITY WORK.MyAND 
+   PORT MAP (M39, T19, M57);
+   
+   -- M58 = M43 x T3
+   AND_M58 : ENTITY WORK.MyAND 
+   PORT MAP (M43, T3, M58);
+   
+   -- M59 = M38 x T22
+   AND_M59 : ENTITY WORK.MyAND 
+   PORT MAP (M38, T22, M59);
+   
+   -- M60 = M37 x T20
+   AND_M60 : ENTITY WORK.MyAND 
+   PORT MAP (M37, T20, M60);
+   
+   -- M61 = M42 x T1
+   AND_M61 : ENTITY WORK.MyAND 
+   PORT MAP (M42, T1, M61);
+   
+   -- M62 = M45 x T4
+   AND_M62 : ENTITY WORK.MyAND 
+   PORT MAP (M45, T4, M62);
+   
+   -- M63 = M41 x T2
+   AND_M63 : ENTITY WORK.MyAND 
+   PORT MAP (M41, T2, M63);
+   
+   -----------------------------------------------
+
+   -- L0 = M61 + M62
+   XOR_L0 : ENTITY WORK.MyXOR
+   PORT MAP (M61, M62, L0);
+   
+   -- L1 = M50 + M56
+   XOR_L1 : ENTITY WORK.MyXOR
+   PORT MAP (M50, M56, L1);
+   
+   -- L2 = M46 + M48
+   XOR_L2 : ENTITY WORK.MyXOR
+   PORT MAP (M46, M48, L2);
+   
+   -- L3 = M47 + M55
+   XOR_L3 : ENTITY WORK.MyXOR
+   PORT MAP (M47, M55, L3);
+   
+   -- L4 = M54 + M58
+   XOR_L4 : ENTITY WORK.MyXOR
+   PORT MAP (M54, M58, L4);
+   
+   -- L5 = M49 + M61
+   XOR_L5 : ENTITY WORK.MyXOR
+   PORT MAP (M49, M61, L5);
+   
+   -- L6 = M62 + L5
+   XOR_L6 : ENTITY WORK.MyXOR
+   PORT MAP (M62, L5, L6);
+   
+   -- L7 = M46 + L3
+   XOR_L7 : ENTITY WORK.MyXOR
+   PORT MAP (M46, L3, L7);
+   
+   -- L8 = M51 + M59
+   XOR_L8 : ENTITY WORK.MyXOR
+   PORT MAP (M51, M59, L8);
+   
+   -- L9 = M52 + M53
+   XOR_L9 : ENTITY WORK.MyXOR
+   PORT MAP (M52, M53, L9);
+   
+   -- L10 = M53 + L4
+   XOR_L10 : ENTITY WORK.MyXOR
+   PORT MAP (M53, L4, L10);
+   
+   -- L11 = M60 + L2
+   XOR_L11 : ENTITY WORK.MyXOR
+   PORT MAP (M60, L2, L11);
+   
+   -- L12 = M48 + M51
+   XOR_L12 : ENTITY WORK.MyXOR
+   PORT MAP (M48, M51, L12);
+   
+   -- L13 = M50 + L0
+   XOR_L13 : ENTITY WORK.MyXOR
+   PORT MAP (M50, L0, L13);
+   
+   -- L14 = M52 + M61
+   XOR_L14 : ENTITY WORK.MyXOR
+   PORT MAP (M52, M61, L14);
+   
+   -- L15 = M55 + L1
+   XOR_L15 : ENTITY WORK.MyXOR
+   PORT MAP (M55, L1, L15);
+   
+   -- L16 = M56 + L0
+   XOR_L16 : ENTITY WORK.MyXOR
+   PORT MAP (M56, L0, L16);
+   
+   -- L17 = M57 + L1
+   XOR_L17 : ENTITY WORK.MyXOR
+   PORT MAP (M57, L1, L17);
+   
+   -- L18 = M58 + L8
+   XOR_L18 : ENTITY WORK.MyXOR
+   PORT MAP (M58, L8, L18);
+   
+   -- L19 = M63 + L4
+   XOR_L19 : ENTITY WORK.MyXOR
+   PORT MAP (M63, L4, L19);
+   
+   -- L20 = L0 + L1
+   XOR_L20 : ENTITY WORK.MyXOR
+   PORT MAP (L0, L1, L20);
+   
+   -- L21 = L1 + L7
+   XOR_L21 : ENTITY WORK.MyXOR
+   PORT MAP (L1, L7, L21);
+   
+   -- L22 = L3 + L12
+   XOR_L22 : ENTITY WORK.MyXOR
+   PORT MAP (L3, L12, L22);
+   
+   -- L23 = L18 + L2
+   XOR_L23 : ENTITY WORK.MyXOR
+   PORT MAP (L18, L2, L23);
+   
+   -- L24 = L15 + L9
+   XOR_L24 : ENTITY WORK.MyXOR
+   PORT MAP (L15, L9, L24);
+   
+   -- L25 = L6 + L10
+   XOR_L25 : ENTITY WORK.MyXOR
+   PORT MAP (L6, L10, L25);
+   
+   -- L26 = L7 + L9
+   XOR_L26 : ENTITY WORK.MyXOR
+   PORT MAP (L7, L9, L26);
+   
+   -- L27 = L8 + L10
+   XOR_L27 : ENTITY WORK.MyXOR
+   PORT MAP (L8, L10, L27);
+   
+   -- L28 = L11 + L14
+   XOR_L28 : ENTITY WORK.MyXOR
+   PORT MAP (L11, L14, L28);
+   
+   -- L29 = L11 + L17
+   XOR_L29 : ENTITY WORK.MyXOR
+   PORT MAP (L11, L17, L29);
+   
+   -- S0 = L6 + L24
+   XOR_S0 : ENTITY WORK.MyXOR
+   PORT MAP (L6, L24, Y0);
+   
+   -- S1 = L16 # L26
+   XOR_S1 : ENTITY WORK.MyXNOR
+   PORT MAP (L16, L26, Y1);
+   
+   -- S2 = L19 # L28
+   XOR_S2 : ENTITY WORK.MyXNOR
+   PORT MAP (L19, L28, Y2);
+   
+   -- S3 = L6 + L21
+   XOR_S3 : ENTITY WORK.MyXOR
+   PORT MAP (L6, L21, Y3);
+   
+   -- S4 = L20 + L22
+   XOR_S4 : ENTITY WORK.MyXOR
+   PORT MAP (L20, L22, Y4);
+   
+   -- S5 = L25 + L29
+   XOR_S5 : ENTITY WORK.MyXOR
+   PORT MAP (L25, L29, Y5);
+   
+   -- S6 = L13 # L27
+   XOR_S6 : ENTITY WORK.MyXNOR
+   PORT MAP (L13, L27, Y6);
+   
+   -- S7 = L6 # L23
+   XOR_S7 : ENTITY WORK.MyXNOR
+   PORT MAP (L6, L23, Y7);
+
+END Behavioral;
