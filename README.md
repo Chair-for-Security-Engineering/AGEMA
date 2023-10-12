@@ -183,4 +183,4 @@ D. Knichel, A. Moradi (2022): "[Composable Gadgets with Reused Fresh Masks, Firs
 
 D. Knichel, A. Moradi (2022): "[Low-Latency Hardware Private Circuits](https://dl.acm.org/doi/abs/10.1145/3548606.3559362)" (ACM CCS 2022) [(pre-print)](https://eprint.iacr.org/2022/507.pdf)
 
-N. Müller, S. Meschkov, D. R. E. Gnad, M. B. Tahoori, A. Moradi (2023): "[Automated Masking of FPGA-Mapped Designs](link will be added later)" (FPL 2023)
+N. Müller, S. Meschkov, D. R. E. Gnad, M. B. Tahoori, A. Moradi (2023): "[Automated Masking of FPGA-Mapped Designs](https://link_will_be_added_later)" (FPL 2023)
