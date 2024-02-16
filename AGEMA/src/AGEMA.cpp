@@ -43,6 +43,7 @@ int main(int argc, char *argv[])
 	char* Method = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* Scheme = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* OrderText = (char *)malloc(Max_Name_Length * sizeof(char));
+	char* LowerCase = (char *)malloc(Max_Name_Length * sizeof(char));
 
 	LibraryFileName[0] = 0;
 	InputVerilogFileName[0] = 0;
@@ -68,7 +69,7 @@ int main(int argc, char *argv[])
 			printf("          [-so/-order       ?] [options]\n");
 			printf("\n");
 			printf("-mt/-method <x>  : naive     -> using the given netlist\n");
-			printf("                 : AIG       -> using the And-Inverter Graph to generate the netlist\n");
+			printf("                 : AIG       -> using the AND-Inverter Graph to generate the netlist\n");
 			printf("                 : BDDsylvan -> using BDD (Sylvan library) to generate mux-based netlist\n");
 			printf("                 : BDDcudd   -> using BDD (CUDD library) library to generate mux-based netlist\n");
 			printf("                 : ANF       -> using Algebraic Normal Form to generate the netlist (only for GHPC and GHPCLL)\n");
@@ -95,7 +96,10 @@ int main(int argc, char *argv[])
 	i = 1;
 	while (i < argc)
 	{
-		if ((!strcmp(argv[i], "-lf")) || (!strcmp(argv[i], "-libraryfile")))
+		strcpy(LowerCase, argv[i]);
+		StrLowerCase(LowerCase);
+
+		if ((!strcmp(LowerCase, "-lf")) || (!strcmp(LowerCase, "-libraryfile")))
 		{
 			i++;
 			if (i < argc)
@@ -106,7 +110,7 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 		}
-		else if ((!strcmp(argv[i], "-df")) || (!strcmp(argv[i], "-designfile")))
+		else if ((!strcmp(LowerCase, "-df")) || (!strcmp(LowerCase, "-designfile")))
 		{
 			i++;
 			if (i < argc)
@@ -117,7 +121,7 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 		}
-		else if ((!strcmp(argv[i], "-mn")) || (!strcmp(argv[i], "-modulename")))
+		else if ((!strcmp(LowerCase, "-mn")) || (!strcmp(LowerCase, "-modulename")))
 		{
 			i++;
 			if (i < argc)
@@ -128,22 +132,30 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 		}
-		else if ((!strcmp(argv[i], "-mt")) || (!strcmp(argv[i], "-method")))
+		else if ((!strcmp(LowerCase, "-mt")) || (!strcmp(LowerCase, "-method")))
 		{
 			i++;
 			if (i < argc)
 			{
-				strcpy(Method, argv[i++]);
+				strcpy(LowerCase, argv[i]);
+				StrLowerCase(LowerCase);
 
-				if (strcmp(Method, "naive") &&
-					strcmp(Method, "AIG") &&
-					strcmp(Method, "BDDsylvan") &&
-					strcmp(Method, "BDDcudd") &&
-					strcmp(Method, "ANF"))
+				if (!strcmp(LowerCase, "naive"))
+					strcpy(Method, "naive");
+				else if (!strcmp(LowerCase, "aig"))
+					strcpy(Method, "AIG");
+				else if (!strcmp(LowerCase, "bddsylvan"))
+					strcpy(Method, "BDDsylvan");
+				else if (!strcmp(LowerCase, "bddcudd"))
+					strcpy(Method, "BDDcudd");
+				else if (!strcmp(LowerCase, "anf"))
+					strcpy(Method, "ANF");
+				else
 				{
-					printf("method \"%s\" not known\n", Method);
+					printf("method \"%s\" not known\n", argv[i]);
 					return 1;
 				}
+				i++;
 			}
 			else
 			{
@@ -151,24 +163,34 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 		}
-		else if ((!strcmp(argv[i], "-sc")) || (!strcmp(argv[i], "-scheme")))
+		else if ((!strcmp(LowerCase, "-sc")) || (!strcmp(LowerCase, "-scheme")))
 		{
 			i++;
 			if (i < argc)
 			{
-				strcpy(Scheme, argv[i++]);
+				strcpy(LowerCase, argv[i]);
+				StrLowerCase(LowerCase);
 
-				if (strcmp(Scheme, "HPC1") &&
-					strcmp(Scheme, "HPC2") &&
-					strcmp(Scheme, "HPC3") &&
-					strcmp(Scheme, "GHPC") &&
-					strcmp(Scheme, "GHPCLL") &&
-					strcmp(Scheme, "COMAR") &&
-					strcmp(Scheme, "LMDPL"))
+				if (!strcmp(LowerCase, "hpc1"))
+					strcpy(Scheme, "HPC1");
+				else if (!strcmp(LowerCase, "hpc2"))
+					strcpy(Scheme, "HPC2");
+				else if (!strcmp(LowerCase, "hpc3"))
+					strcpy(Scheme, "HPC3");
+				else if (!strcmp(LowerCase, "ghpc"))
+					strcpy(Scheme, "GHPC");
+				else if (!strcmp(LowerCase, "ghpcll"))
+					strcpy(Scheme, "GHPCLL");
+				else if (!strcmp(LowerCase, "comar"))
+					strcpy(Scheme, "COMAR");
+				else if (!strcmp(LowerCase, "lmdpl"))
+					strcpy(Scheme, "LMDPL");
+				else
 				{
-					printf("scheme \"%s\" not known\n", Scheme);
+					printf("scheme \"%s\" not known\n", argv[i]);
 					return 1;
 				}
+				i++;
 			}
 			else
 			{
@@ -176,7 +198,7 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 		}
-		else if ((!strcmp(argv[i], "-so")) || (!strcmp(argv[i], "-order")))
+		else if ((!strcmp(LowerCase, "-so")) || (!strcmp(LowerCase, "-order")))
 		{
 			i++;
 			if (i < argc)
@@ -187,27 +209,27 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 		}
-		else if ((!strcmp(argv[i], "-cg")) || (!strcmp(argv[i], "-clockgating")))
+		else if ((!strcmp(LowerCase, "-cg")) || (!strcmp(LowerCase, "-clockgating")))
 		{
 			MakePipeline = 0;
 			i++;
 		}
-		else if ((!strcmp(argv[i], "-nn")) || (!strcmp(argv[i], "-newnames")))
+		else if ((!strcmp(LowerCase, "-nn")) || (!strcmp(LowerCase, "-newnames")))
 		{
 			KeepOriginalNames = 0;
 			i++;
 		}
-		else if ((!strcmp(argv[i], "-no")) || (!strcmp(argv[i], "-noorder")))
+		else if ((!strcmp(LowerCase, "-no")) || (!strcmp(LowerCase, "-noorder")))
 		{
 			WriteInOrder = 0;
 			i++;
 		}
-		else if ((!strcmp(argv[i], "-wd")) || (!strcmp(argv[i], "-writedepth")))
+		else if ((!strcmp(LowerCase, "-wd")) || (!strcmp(LowerCase, "-writedepth")))
 		{
 			WriteDepths = 1;
 			i++;
 		}
-		else if ((!strcmp(argv[i], "-su")) || (!strcmp(argv[i], "-sepunmasked")))
+		else if ((!strcmp(LowerCase, "-su")) || (!strcmp(LowerCase, "-sepunmasked")))
 		{
 			SeparateUnmaskedModule = 1;
 			i++;
@@ -272,7 +294,7 @@ int main(int argc, char *argv[])
 		 (!strcmp(Scheme, "COMAR")) || (!strcmp(Scheme, "LMDPL"))) &&
 		(SecurityOrder > 1))
 	{
-		printf("schemes GHPC, GHPCLL, COMAR, and LMDPL support only first-order security\n");
+		printf("scheme %s supports only first-order security\n", Scheme);
 		return 1;
 	}
 
@@ -283,6 +305,13 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	if (((!strcmp(Method, "AIG")) || (!strcmp(Method, "BDDsylvan")) || (!strcmp(Method, "BDDcudd"))) &&
+		(strcmp(Scheme, "HPC1") && strcmp(Scheme, "HPC2") && strcmp(Scheme, "HPC3")))
+	{
+		printf("method %s can only be comabined with schemes HPC1, HPC2, and HPC3\n", Method);
+		return 1;
+	}
+	
 	if ((!strcmp(Scheme, "LMDPL")) && (MakePipeline == 0))
 	{
 		printf("it does not make sense to use clock gating with LMDPL scheme. a pipeline circuit is built.\n");
@@ -377,6 +406,7 @@ int main(int argc, char *argv[])
 	free(Method);
 	free(Scheme);
 	free(OrderText);
+	free(LowerCase);
 
 	if (res)
 	{
