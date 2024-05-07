@@ -1,11 +1,11 @@
 /*
  * -----------------------------------------------------------------
  * COMPANY : Ruhr University Bochum
- * AUTHOR  : Pascal Sasdrich (pascal.sasdrich@rub.de) & Nicolai Müller (nicolai.mueller@rub.de)
+ * AUTHOR  : Pascal Sasdrich (pascal.sasdrich@rub.de) & Nicolai Mï¿½ller (nicolai.mueller@rub.de)
  * DOCUMENT: https://eprint.iacr.org/2021/569/
  * -----------------------------------------------------------------
  *
- * Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Müller, Pascal Sasdrich
+ * Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Mï¿½ller, Pascal Sasdrich
  *
  * All rights reserved.
  *
@@ -43,10 +43,11 @@
 #include "gia/gia.h"
 #include "gia/giaAig.h"
 
-#include <fstream>
-#include <iostream>
-#include <map>
+/* Setup Impeccable Circuits II */
+#include "ImpeccableCircuitsII/design.hpp"
+
 #include <chrono>
+#include <tuple>
 
 // Number of monomials must be smaller than ENCODING_SIZE
 const unsigned int ENCODING_SIZE = 16384;
@@ -2139,78 +2140,6 @@ void convertANF(std::string sourcePath, std::string topmodule, std::string desti
     GHPC_Step1_old.close();
     GHPC_Gadget_old.close();
 
-    //std::string copy_file;
-    //copy_file = directory_path + "/" + topmodule + "_GHPC_AND_reg.vhd";
-    //std::filesystem::copy("cell/ghpc/GHPC_AND_reg.vhd", copy_file);
-
-    //copy_file = directory_path + "/" + topmodule + "_GHPC_pkg.vhd";
-    //std::filesystem::copy("cell/ghpc/GHPC_pkg.vhd", copy_file);
-
-    //copy_file = directory_path + "/" + topmodule + "_GHPC_Step2.vhd";
-    //std::filesystem::copy("cell/ghpc/GHPC_Step2.vhd", copy_file);
-
-    //copy_file = directory_path + "/" + topmodule + "_GHPC_XORall_xor_reg.vhd";
-    //std::filesystem::copy("cell/ghpc/GHPC_XORall_xor_reg.vhd", copy_file);
-
-    //copy_file = directory_path + "/" + topmodule + "_GHPC_reg.vhd";
-    //std::filesystem::copy("cell/ghpc/GHPC_reg.vhd", copy_file);
-
-    /*std::ifstream GHPC_AND_reg("cell/ghpc/GHPC_AND_reg.vhd");
-    if(GHPC_AND_reg.fail()){std::cout << "[ERROR] GHPC_AND_reg.vhd does not exist!" << std::endl;}
-
-    line_ctr = 0;
-    while(getline(GHPC_AND_reg, line)){
-        if(line_ctr > 16){
-            netlist2 << line << std::endl;
-        }
-        line_ctr++;
-    }
-    GHPC_AND_reg.close();
-
-    std::ifstream GHPC_pkg("cell/ghpc/GHPC_pkg.vhd");
-    if(GHPC_pkg.fail()){std::cout << "[ERROR] GHPC_pkg.vhd does not exist!" << std::endl;}
-    line_ctr = 0;
-    while(getline(GHPC_pkg, line)){
-        if(line_ctr > 16){
-            netlist2 << line << std::endl;
-        }
-        line_ctr++;
-    }
-    GHPC_pkg.close();
-
-    std::ifstream GHPC_Step2("cell/ghpc/GHPC_Step2.vhd");
-    if(GHPC_Step2.fail()){std::cout << "[ERROR] GHPC_Step2.vhd does not exist!" << std::endl;}
-    line_ctr = 0;
-    while(getline(GHPC_Step2, line)){
-        if(line_ctr > 16){
-            netlist2 << line << std::endl;
-        }
-        line_ctr++;
-    }
-    GHPC_Step2.close();
-
-    std::ifstream GHPC_XOR("cell/ghpc/GHPC_XORall_xor_reg.vhd");
-    if(GHPC_XOR.fail()){std::cout << "[ERROR] GHPC_XORall_xor_reg.vhd does not exist!" << std::endl;}
-    line_ctr = 0;
-    while(getline(GHPC_XOR, line)){
-        if(line_ctr > 16){
-            netlist2 << line << std::endl;
-        }
-        line_ctr++;
-    }
-    GHPC_XOR.close();
-
-    std::ifstream GHPC_reg("cell/ghpc/GHPC_reg.vhd");
-    if(GHPC_reg.fail()){std::cout << "[ERROR] GHPC_reg.vhd does not exist!" << std::endl;}
-    line_ctr = 0;
-    while(getline(GHPC_reg, line)){
-        if(line_ctr > 12){
-            netlist2 << line << std::endl;
-        }
-        line_ctr++;
-    }
-    GHPC_reg.close();*/
-
     auto finish_sa = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed_sa = finish_sa - start_sa;
     std::cout << "[" << elapsed_sa.count() << "] Simulated annealing finished!" << std::endl;
@@ -2293,6 +2222,1102 @@ void convertANF(std::string sourcePath, std::string topmodule, std::string desti
 
     // Clear circuit model
     model.clear();
+}
+
+ImpeccableCircuitsII::Module BuildTopmodule(std::vector<ImpeccableCircuitsII::Module>& Module, std::string ModuleName){
+    ImpeccableCircuitsII::Module Topmodule;
+    std::map<std::string, int> TopmoduleOutputsWithIndices;
+    std::vector<std::string> AlreadyComputedOutputs;
+
+    Topmodule.ModuleName = ModuleName;
+    Topmodule.InstanceName = Topmodule.ModuleName + "_inst";
+
+    for (size_t OutputIndex = 0; OutputIndex < Module.size(); OutputIndex++){   
+        AddSignals(Module.at(OutputIndex).Inputs, Topmodule.Inputs, Topmodule.Inputs, Topmodule.Outputs);
+        AddSignals(Module.at(OutputIndex).Outputs, Topmodule.Outputs, Topmodule.Outputs, Topmodule.Outputs);
+
+        if (std::find(AlreadyComputedOutputs.begin(), AlreadyComputedOutputs.end(), Module.at(OutputIndex).Outputs.back().GetName()) == AlreadyComputedOutputs.end()){
+            Topmodule.Instructions.push_back(Module.at(OutputIndex).PrintInstance());
+            AlreadyComputedOutputs.push_back(Module.at(OutputIndex).Outputs.back().GetName());
+        }
+    }   
+
+    return Topmodule; 
+}
+
+void BuildMainFile(std::string SourcePath, std::string Topmodule, std::string AttributeReportFileName, ImpeccableCircuitsII::Design& Design, CircuitStruct* Circuit, ImpeccableCircuitsII::ErrorCorrectingCode& Code, bool Comments){
+    int InputIndex, OutputIndex;
+
+    // Output file stream to write verilog circuit
+    std::string DirectoryPath = SourcePath.substr(0, SourcePath.find_last_of("/"));
+    std::string DestinationPath = DirectoryPath + "/" + Topmodule + "_Top.v";
+    std::cout << "Store: " << DestinationPath << std::endl;
+    std::ofstream Netlist(DestinationPath);  
+
+    // Generate topmodule
+    ImpeccableCircuitsII::Module Mainmodule;
+    Mainmodule.ModuleName = Topmodule + "_Top";
+
+    // Add IO ports
+    for (InputIndex = 0; InputIndex < Circuit->NumberOfInputs; InputIndex++){
+        Mainmodule.Inputs.push_back((std::string)Circuit->Signals[Circuit->Inputs[InputIndex]]->Name);
+        Mainmodule.Inputs.back().Annotation = (std::string)Circuit->Signals[Circuit->Inputs[InputIndex]]->Attribute;
+        Mainmodule.Inputs.back().PrimaryInput = true;
+    }    
+
+    for (OutputIndex = 0; OutputIndex < Circuit->NumberOfOutputs; OutputIndex++){
+        Mainmodule.Outputs.push_back((std::string)Circuit->Signals[Circuit->Outputs[OutputIndex]]->Name);
+        Mainmodule.Outputs.back().PrimaryOutput = true;
+    }   
+
+    // Add intermediate signals
+    if (Design.Decomposed){
+        AddSignals(Design.InF.Inputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+        AddSignals(Design.InF.Outputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    }
+
+    AddSignals(Design.Fx.Inputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    AddSignals(Design.Fx.Outputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    AddSignals(Design.R1_ind.Inputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    AddSignals(Design.R1_ind.Outputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    AddSignals(Design.R2_ind.Inputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    AddSignals(Design.R2_ind.Outputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    AddSignals(Design.Reg1.Inputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    AddSignals(Design.Reg1.Outputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    AddSignals(Design.Reg2.Inputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);
+    AddSignals(Design.Reg2.Outputs, Mainmodule.Inputs, Mainmodule.Intermediates, Mainmodule.Outputs);    
+
+    // Add instructions
+    if (Design.Decomposed){
+        Mainmodule.Instructions.push_back(Design.InF.PrintInstance());
+    }
+
+    Mainmodule.Instructions.push_back(Design.Fx.PrintInstance());
+    Mainmodule.Instructions.push_back(Design.R1_ind.PrintInstance());
+    Mainmodule.Instructions.push_back(Design.R2_ind.PrintInstance());
+    Mainmodule.Instructions.push_back(Design.Reg1.PrintInstance());
+    Mainmodule.Instructions.push_back(Design.Reg2.PrintInstance());
+
+    std::map<std::string, unsigned int> ShareDomains;
+    ShareDomains = ImpeccableCircuitsII::GetAttributes(AttributeReportFileName);
+
+    for (OutputIndex = 0; OutputIndex < (int)Mainmodule.Outputs.size(); OutputIndex++){
+        if (ShareDomains.count(Mainmodule.Outputs.at(OutputIndex).GetName())){
+            Mainmodule.Outputs.at(OutputIndex).share_domain = ShareDomains.at(Mainmodule.Outputs.at(OutputIndex).GetName());
+        }else{
+            Mainmodule.Outputs.at(OutputIndex).share_domain = 0;
+        }
+    }
+    
+    // Build muxtree for done signal
+    Design.Muxtree.ModuleName = "multiplexer";
+    Design.Muxtree.InstanceName = "multiplexer_inst";
+
+    std::string Name, Instr;
+    Instr = Design.Muxtree.ModuleName + " #(.WIDTH(" + std::to_string(Circuit->NumberOfOutputs) + ")) " + Design.Muxtree.InstanceName + "(.s({";
+
+    // Find done signal name
+    std::string DoneName = "no_done_signal_found", Attr;
+
+    for (OutputIndex = 0; OutputIndex < Circuit->NumberOfOutputs; OutputIndex++){
+        Attr = Circuit->Signals[Circuit->Outputs[OutputIndex]]->Attribute;
+
+        if (Attr == "control"){
+            DoneName = Circuit->Signals[Circuit->Outputs[OutputIndex]]->Name;
+            break;
+        }
+    }
+
+    ImpeccableCircuitsII::Signal PrimaryOutputSignal;
+
+    if (DoneName == "no_done_signal_found"){
+        std::cout << "WARNING: No done signal found!" << std::endl;
+
+        // Wire all outputs to primary outputs
+        for (OutputIndex = 0; OutputIndex < Circuit->NumberOfOutputs; OutputIndex++){
+            PrimaryOutputSignal = Mainmodule.Outputs.at(OutputIndex);
+            PrimaryOutputSignal.Appendix = "_Final";
+
+            Instr = "assign " + Mainmodule.Outputs.at(OutputIndex).GetName() +  " = " + PrimaryOutputSignal.GetName() + ";";
+            Mainmodule.Instructions.push_back(Instr);
+        }
+
+    }else{
+        for (size_t i = 0; i < Code.ParityWidth; i++){
+            Name = DoneName;
+            Name += "_Final[" + std::to_string(i) + "]";
+            Instr += Name + ", ";
+            Design.Muxtree.Inputs.push_back(Name);
+        }
+        
+        Name = DoneName;
+        Name += "_Final";
+        Design.Muxtree.Inputs.push_back(Name);
+        Design.Muxtree.Outputs.push_back(DoneName);
+        Instr += Name + "}), .d({";
+        Name = ".q({";
+
+        for (OutputIndex = 0; OutputIndex < Circuit->NumberOfOutputs; OutputIndex++){
+            PrimaryOutputSignal = Mainmodule.Outputs.at(OutputIndex);
+            PrimaryOutputSignal.Appendix = "_Final";
+            
+            if (PrimaryOutputSignal.Index == -1){
+                PrimaryOutputSignal.Index = 0;
+            }
+
+            if (OutputIndex == Circuit->NumberOfOutputs - 1){ 
+                Name += Mainmodule.Outputs.at(OutputIndex).GetName() + "}));";
+                Instr += PrimaryOutputSignal.GetName() + "}), ";
+            }else{
+                Name += Mainmodule.Outputs.at(OutputIndex).GetName() + ", ";
+                Instr += PrimaryOutputSignal.GetName() + ", ";
+            }
+        }
+
+        Instr += Name;
+        Design.Muxtree.Instructions.push_back(Instr);
+
+        // Assign final multiplexer(s)
+        Mainmodule.Instructions.push_back(Design.Muxtree.Instructions.at(0));
+    }
+
+    Mainmodule.PrintModule(Netlist, Comments, false);
+    ImpeccableCircuitsII::PrintRegister(Netlist);
+    ImpeccableCircuitsII::PrintMultiplexer(Netlist, Mainmodule.Outputs, Design.F.size());
+    ImpeccableCircuitsII::PrintMultiplexerTree(Netlist, Design.F.size(), Design.RedundandDoneSignal);
+    Netlist.close();
+}
+
+std::vector<ImpeccableCircuitsII::Module> PrepareRedundantLayer(unsigned int MessageSize, std::vector<ImpeccableCircuitsII::Signal> Data, std::vector<ImpeccableCircuitsII::Signal> Redundancy, std::vector<ImpeccableCircuitsII::Module>& Layer, std::string InputAppendix, std::string DirectInputAppendix, std::string OutputAppendix){
+    std::vector<ImpeccableCircuitsII::Module> Result;
+    ImpeccableCircuitsII::Module Module;
+    unsigned int InputIndex, MessageIndex, RedundancyIndex, RedundancySize = Layer.size(), Counter = 0;
+    std::string Instruction, Search, Replace;
+
+    for (MessageIndex = 0; MessageIndex < Data.size(); MessageIndex+= MessageSize){
+        for (RedundancyIndex = 0; RedundancyIndex < RedundancySize; RedundancyIndex++){
+            if (Redundancy.at((MessageIndex/MessageSize) * RedundancySize + RedundancyIndex).GetName() != "1'b0"){
+
+                Result.push_back(Module);
+                Result.back().SetModuleAndInstanceName(Layer.at(RedundancyIndex).ModuleName, Layer.at(RedundancyIndex).InstanceName, OutputAppendix, Counter);
+                Counter++;
+                    
+                // Set the module inputs
+                for (InputIndex = 0; InputIndex < Layer.at(RedundancyIndex).Inputs.size(); InputIndex++){
+                    Result.back().Inputs.push_back(Data.at(MessageIndex + Layer.at(RedundancyIndex).Inputs.at(InputIndex).Index));
+                    Result.back().Inputs.back().PrimaryOutput = false;
+
+                    if (Result.back().Inputs.back().GetName() != "1'b0"){
+                        if (Result.back().Inputs.back().Linear){
+                            Result.back().Inputs.back().Appendix = DirectInputAppendix;
+                        }else{
+                            Result.back().Inputs.back().Appendix = InputAppendix;
+                        }
+                    }
+                }
+
+                // Set the module output
+                Result.back().Outputs.push_back(Redundancy.at((MessageIndex/MessageSize) * RedundancySize + RedundancyIndex));
+                Result.back().Outputs.back().Appendix = OutputAppendix;
+
+                // Set instruction
+                Instruction = Layer.at(RedundancyIndex).Instructions.at(0);
+
+                for (InputIndex = 0; InputIndex < Result.back().Inputs.size(); InputIndex++){
+                    Instruction = ImpeccableCircuitsII::ReplaceString(Instruction, Layer.at(RedundancyIndex).Inputs.at(InputIndex).GetName(), Result.back().Inputs.at(InputIndex).GetName());
+                }  
+                
+                Instruction = ImpeccableCircuitsII::ReplaceString(Instruction, Layer.at(RedundancyIndex).Outputs.back().GetName(), Result.back().Outputs.back().GetName());
+                Result.back().Instructions.emplace_back(Instruction);
+            }  
+        }         
+    }
+
+    return Result;
+}
+
+std::vector<ImpeccableCircuitsII::Module> PrepareRoundLayer(std::vector<ImpeccableCircuitsII::Module>& Layer, std::string InputAppendix, std::string DirectInputAppendix, std::string OutputAppendix){
+    std::vector<ImpeccableCircuitsII::Module> Result(Layer.size());
+    unsigned int InputIndex, OutputIndex, TmpIndex;
+    std::string Search;
+
+    for (OutputIndex = 0; OutputIndex < Layer.size(); OutputIndex++){
+        Result.at(OutputIndex).SetModuleAndInstanceName(Layer.at(OutputIndex).ModuleName, Layer.at(OutputIndex).InstanceName, OutputAppendix, OutputIndex);
+
+        // Set module output
+        Result.at(OutputIndex).Outputs.push_back(Layer.at(OutputIndex).Outputs.at(0));
+        Result.at(OutputIndex).Outputs.at(0).Appendix = OutputAppendix;
+
+        // Add inputs while appending feedback signals
+        for (InputIndex = 0; InputIndex < Layer.at(OutputIndex).Inputs.size(); InputIndex++){
+            Result.at(OutputIndex).Inputs.push_back(Layer.at(OutputIndex).Inputs.at(InputIndex));
+
+            if (!Layer.at(OutputIndex).Inputs.at(InputIndex).PrimaryInput){
+                if (Layer.at(OutputIndex).Inputs.at(InputIndex).Linear){
+                    Result.at(OutputIndex).Inputs.at(InputIndex).Appendix = DirectInputAppendix;
+                }else{
+                    Result.at(OutputIndex).Inputs.at(InputIndex).Appendix = InputAppendix;
+                }
+            }
+        }
+
+        // Add intermediates
+        for (InputIndex = 0; InputIndex < Layer.at(OutputIndex).Intermediates.size(); InputIndex++){
+            Result.at(OutputIndex).Intermediates.push_back(Layer.at(OutputIndex).Intermediates.at(InputIndex));
+        }
+
+        // Set instructions
+        Result.at(OutputIndex).Instructions = Layer.at(OutputIndex).Instructions;
+
+        if (Layer.at(OutputIndex).Inputs != Layer.at(OutputIndex).Outputs){
+            ImpeccableCircuitsII::ReplaceSignalNames(Layer.at(OutputIndex).Inputs, Layer.at(OutputIndex).Intermediates, Layer.at(OutputIndex).Outputs, Result.at(OutputIndex).Instructions, "x!?", "t!?", "y!?");
+        }else{
+            Result.at(OutputIndex).Instructions.at(0) = ImpeccableCircuitsII::ReplaceString(Result.at(OutputIndex).Instructions.at(0), "x", "x!?");
+            Result.at(OutputIndex).Instructions.at(0) = ImpeccableCircuitsII::ReplaceString(Result.at(OutputIndex).Instructions.at(0), "y", "y!?");
+        }
+
+        for (InputIndex = 0; InputIndex < Layer.at(OutputIndex).Instructions.size(); InputIndex++){
+            Result.at(OutputIndex).Instructions.at(InputIndex) = ImpeccableCircuitsII::ReplaceString(Result.at(OutputIndex).Instructions.at(InputIndex), "y!?", Result.at(OutputIndex).Outputs.at(0).GetName());
+
+            if (Result.at(OutputIndex).Inputs.size() == 1){
+                Search = "x!?";
+                Result.at(OutputIndex).Instructions.at(InputIndex) = ImpeccableCircuitsII::ReplaceString(Result.at(OutputIndex).Instructions.at(InputIndex), Search, Result.at(OutputIndex).Inputs.back().GetName());
+            }else{
+                for (TmpIndex = 0; TmpIndex < Result.at(OutputIndex).Inputs.size(); TmpIndex++){
+                    Search = "x!?[" + std::to_string(TmpIndex) + "]";
+                    Result.at(OutputIndex).Instructions.at(InputIndex) = ImpeccableCircuitsII::ReplaceString(Result.at(OutputIndex).Instructions.at(InputIndex), Search, Result.at(OutputIndex).Inputs.at(TmpIndex).GetName());
+                }
+            }
+            
+            if (Result.at(OutputIndex).Intermediates.size() == 1){
+                Search = "t!?";
+                Result.at(OutputIndex).Instructions.at(InputIndex) = ImpeccableCircuitsII::ReplaceString(Result.at(OutputIndex).Instructions.at(InputIndex), Search, Result.at(OutputIndex).Intermediates.back().GetName());
+            }else{
+                for (TmpIndex = 0; TmpIndex < Result.at(OutputIndex).Intermediates.size(); TmpIndex++){
+                    Search = "t!?[" + std::to_string(TmpIndex) + "]";
+                    Result.at(OutputIndex).Instructions.at(InputIndex) = ImpeccableCircuitsII::ReplaceString(Result.at(OutputIndex).Instructions.at(InputIndex), Search, Result.at(OutputIndex).Intermediates.at(TmpIndex).GetName());
+                }
+            }
+        } 
+    }
+
+    return Result;
+}
+
+std::vector<ImpeccableCircuitsII::Module> PrepareXorLayer(std::vector<ImpeccableCircuitsII::Signal> Signals, std::string InputAppendix1, std::string InputAppendix2, std::string OutputAppendix){
+    unsigned int OutputIndex, SignalIndex = 0, NumberOfOutputs = 0;
+    std::string Instruction;
+    
+    for (unsigned int OutputIndex = 0; OutputIndex < Signals.size(); OutputIndex++){
+        if ((Signals.at(OutputIndex).GetName() != "1'b0") && (Signals.at(OutputIndex).GetName() != "1'b1")){
+            NumberOfOutputs++;
+        }
+    }
+    
+    std::vector<ImpeccableCircuitsII::Module> Result(NumberOfOutputs);
+
+    for (OutputIndex = 0; OutputIndex < Signals.size(); OutputIndex++){
+        if ((Signals.at(OutputIndex).GetName() != "1'b0") && (Signals.at(OutputIndex).GetName() != "1'b1")){
+            Result.at(SignalIndex).SetModuleAndInstanceName("OurXor", "OurXor_inst", OutputAppendix, OutputIndex);
+            Result.at(SignalIndex).Inputs.push_back(Signals.at(OutputIndex));
+            Result.at(SignalIndex).Inputs.at(0).Appendix = InputAppendix1;
+            Result.at(SignalIndex).Inputs.at(0).PrimaryOutput = false;
+            Result.at(SignalIndex).Inputs.push_back(Signals.at(OutputIndex));
+            Result.at(SignalIndex).Inputs.at(1).Appendix = InputAppendix2;        
+            Result.at(SignalIndex).Inputs.at(1).PrimaryOutput = false;
+            Result.at(SignalIndex).Outputs.push_back(Signals.at(OutputIndex));
+            Result.at(SignalIndex).Outputs.at(0).PrimaryOutput = Signals.at(OutputIndex).PrimaryOutput;
+            Result.at(SignalIndex).Outputs.at(0).Appendix = OutputAppendix;
+            
+            // Set instruction
+            Instruction = "assign " + Result.at(SignalIndex).Outputs.at(0).GetName() + " = " + Result.at(SignalIndex).Inputs.at(0).GetName() + " ^ " + Result.at(SignalIndex).Inputs.at(1).GetName() + ";";
+            Result.at(SignalIndex).Instructions.emplace_back(Instruction);   
+            SignalIndex++;
+        }
+    }
+
+    return Result;
+}
+
+void GenerateRegisterModule(std::string SourcePath, std::string Topmodule, std::string AttributeReportFileName, ImpeccableCircuitsII::ErrorCorrectingCode& Code, ImpeccableCircuitsII::Signal& Clock, ImpeccableCircuitsII::Design& Design, std::vector<ImpeccableCircuitsII::Signal>& DataStateBeforeReg, std::vector<ImpeccableCircuitsII::Signal>& RedundancyStateBeforeReg, std::vector<ImpeccableCircuitsII::Signal>& DataStateAfterReg, std::vector<ImpeccableCircuitsII::Signal>& RedundancyStateAfterReg, std::vector<ImpeccableCircuitsII::Signal>& DataPrimaryState, std::vector<ImpeccableCircuitsII::Signal>& RedundancyPrimaryState, std::string DataModuleName, std::string DataInputAppendix, std::string DataOutputAppendix, std::string RedundancyModuleName, std::string RedundancyInputAppendix, std::string RedundancyOutputAppendix){  
+    unsigned int BitIndex, MessageIndex, RegisterIndex, ShareDomain;
+    std::string RegisterInputName, RegisterOutputName, Instruction, Attribute;
+    std::map<unsigned int, std::vector<std::string>> SharedRegisterInputs, SharedRegisterOutputs;
+
+    std::map<std::string, unsigned int> ShareDomains;
+    ShareDomains = ImpeccableCircuitsII::GetAttributes(AttributeReportFileName);
+
+    // We sort the signals based on (attribute, share domain, depth, reg/comb, linear)
+    std::map<std::tuple<std::string, unsigned int, int, bool, unsigned int>, std::vector<ImpeccableCircuitsII::Signal>> SignalsBeforeReg, SignalsAfterReg, PrimarySignals;
+    std::vector<ImpeccableCircuitsII::Signal> PrimaryInputSignals; 
+    bool IsReg;
+    int Depth;
+
+    // Create two modules for the register stages
+    // Reg1 stores the synchronized data state while Reg2 stores the synchronized redundant state
+    Design.Reg1.ModuleName = DataModuleName;
+    Design.Reg2.ModuleName = RedundancyModuleName;
+    Design.Reg1.InstanceName = Design.Reg1.ModuleName + "_inst";
+    Design.Reg2.InstanceName = Design.Reg2.ModuleName + "_inst";
+    Design.Reg1.Inputs.push_back(Clock);
+    Design.Reg2.Inputs.push_back(Clock);
+
+    for (RegisterIndex = 0; RegisterIndex < Design.R.size(); RegisterIndex++){
+        for (BitIndex = 0; BitIndex < Design.R.at(RegisterIndex).Inputs.size(); BitIndex++){
+            if (Design.R.at(RegisterIndex).Inputs.at(BitIndex).PrimaryInput){
+                PrimaryInputSignals.push_back(Design.R.at(RegisterIndex).Inputs.at(BitIndex));
+            }
+        }
+    }
+
+    std::sort(PrimaryInputSignals.begin(), PrimaryInputSignals.end(), [](ImpeccableCircuitsII::Signal& a, ImpeccableCircuitsII::Signal& b) {
+        if (a.GetName().length() == b.GetName().length()){
+            return a.GetName() < b.GetName();
+        }else{
+            return a.GetName().length() < b.GetName().length();
+        }
+    });    
+
+    PrimaryInputSignals.erase(std::unique(PrimaryInputSignals.begin(), PrimaryInputSignals.end(), [] (ImpeccableCircuitsII::Signal &lhs, ImpeccableCircuitsII::Signal &rhs) {return (lhs.GetName() == rhs.GetName());}), PrimaryInputSignals.end());
+
+    for (RegisterIndex = 0; RegisterIndex < PrimaryInputSignals.size(); RegisterIndex++){
+        Attribute = PrimaryInputSignals.at(RegisterIndex).Annotation;
+        Depth = PrimaryInputSignals.at(RegisterIndex).Depth;
+
+        if (ShareDomains.count(PrimaryInputSignals.at(RegisterIndex).GetName())){
+            ShareDomain = ShareDomains.at(PrimaryInputSignals.at(RegisterIndex).GetName());
+        }else if (ShareDomains.count(PrimaryInputSignals.at(RegisterIndex).GetName())){
+            ShareDomain = ShareDomains.at(PrimaryInputSignals.at(RegisterIndex).GetName());
+        }else{
+            ShareDomain = 0;
+        }
+
+        PrimarySignals[std::make_tuple(Attribute, ShareDomain, Depth, false, false)].push_back(PrimaryInputSignals.at(RegisterIndex));
+    }
+
+    for (auto& Signals: PrimarySignals){
+        for (MessageIndex = 0; MessageIndex < Signals.second.size(); MessageIndex++){
+            Signals.second.at(MessageIndex).share_domain = std::get<1>(Signals.first);
+        }
+
+        if (std::get<0>(Signals.first) != "secure"){
+            for (MessageIndex = 0; MessageIndex < Signals.second.size(); MessageIndex++){
+                DataPrimaryState.push_back(Signals.second.at(MessageIndex));
+
+                for (BitIndex = 1; BitIndex < Code.MessageWidth; BitIndex++){
+                    DataPrimaryState.emplace_back("1'b0");
+                }
+            }
+        }else{
+            DataPrimaryState.insert(DataPrimaryState.end(), Signals.second.begin(), Signals.second.end());
+
+            // Pad data signals if necessary
+            MessageIndex = DataPrimaryState.size();
+            while (MessageIndex % Code.MessageWidth){
+                DataPrimaryState.emplace_back("1'b0");
+                MessageIndex++;
+            }             
+        }
+    }
+
+    // Prepare the redundant states with register inputs and outputs
+    for (MessageIndex = 0; MessageIndex < DataPrimaryState.size(); MessageIndex += Code.MessageWidth){
+        for (BitIndex = 0; BitIndex < Code.ParityWidth; BitIndex++){
+            RedundancyPrimaryState.push_back(DataPrimaryState.at(MessageIndex));
+            RedundancyPrimaryState.back().ModuleCounter = DataPrimaryState.at(MessageIndex).Index;
+            RedundancyPrimaryState.back().Index = BitIndex;
+
+            // Consider only primary control outputs from the redundancy
+            if (RedundancyPrimaryState.back().Annotation != "control"){
+                RedundancyPrimaryState.back().PrimaryOutput = false;
+            }
+        }
+    }
+
+    std::sort(Design.Reg.begin(), Design.Reg.end(), [](ImpeccableCircuitsII::Module& a, ImpeccableCircuitsII::Module& b) {
+        if (a.Inputs.back().GetName().length() == b.Inputs.back().GetName().length()){
+            return a.Inputs.back().GetName() < b.Inputs.back().GetName();
+        }else{
+            return a.Inputs.back().GetName().length() < b.Inputs.back().GetName().length();
+        }
+    });
+
+    // Prepare the data states with register inputs and outputs
+    for (RegisterIndex = 0; RegisterIndex < Design.Reg.size(); RegisterIndex++){
+        if (Design.Reg.at(RegisterIndex).Inputs.back().Annotation == Design.Reg.at(RegisterIndex).Outputs.back().Annotation){
+            Attribute = Design.Reg.at(RegisterIndex).Inputs.back().Annotation;
+            Depth = Design.Reg.at(RegisterIndex).Inputs.back().Depth;
+
+            if (ShareDomains.count(Design.Reg.at(RegisterIndex).Inputs.back().GetName())){
+                ShareDomain = ShareDomains.at(Design.Reg.at(RegisterIndex).Inputs.back().GetName());
+            }else if (ShareDomains.count(Design.Reg.at(RegisterIndex).Outputs.back().GetName())){
+                ShareDomain = ShareDomains.at(Design.Reg.at(RegisterIndex).Outputs.back().GetName());
+            }else{
+                ShareDomain = 0;
+            }
+
+            IsReg = (Design.Reg.at(RegisterIndex).Inputs.back().GetName() != Design.Reg.at(RegisterIndex).Outputs.back().GetName()) ? true : false;
+            SignalsBeforeReg[std::make_tuple(Attribute, ShareDomain, Depth, IsReg, Design.Reg.at(RegisterIndex).Inputs.back().Linear)].push_back(Design.Reg.at(RegisterIndex).Inputs.back());
+            SignalsAfterReg[std::make_tuple(Attribute, ShareDomain, Depth, IsReg, Design.Reg.at(RegisterIndex).Outputs.back().Linear)].push_back(Design.Reg.at(RegisterIndex).Outputs.back());         
+        }else{
+            std::cout << "FAIL" << std::endl;
+            std::cout << "The attributes of register input " << Design.Reg.at(RegisterIndex).Inputs.back().GetName() << " and register output " << Design.Reg.at(RegisterIndex).Outputs.back().GetName() << " do not match!" << std::endl;
+            std::cout << "Please check the attribute propagation." << std::endl;
+        }
+    }
+
+    for (auto& Signals: SignalsBeforeReg){
+        for (MessageIndex = 0; MessageIndex < Signals.second.size(); MessageIndex++){
+            Signals.second.at(MessageIndex).share_domain = std::get<1>(Signals.first);
+        }
+
+        if (std::get<0>(Signals.first) != "secure"){
+            for (MessageIndex = 0; MessageIndex < Signals.second.size(); MessageIndex++){
+                DataStateBeforeReg.push_back(Signals.second.at(MessageIndex));
+
+                for (BitIndex = 1; BitIndex < Code.MessageWidth; BitIndex++){
+                    DataStateBeforeReg.emplace_back("1'b0");
+                }
+            }
+        }else{
+            DataStateBeforeReg.insert(DataStateBeforeReg.end(), Signals.second.begin(), Signals.second.end());
+
+            // Pad data signals if necessary
+            MessageIndex = DataStateBeforeReg.size();
+            while (MessageIndex % Code.MessageWidth){
+                DataStateBeforeReg.emplace_back("1'b0");
+                MessageIndex++;
+            }             
+        }
+    }
+
+    for (auto& Signals: SignalsAfterReg){
+        for (MessageIndex = 0; MessageIndex < Signals.second.size(); MessageIndex++){
+            Signals.second.at(MessageIndex).share_domain = std::get<1>(Signals.first);
+        }
+
+        if (std::get<0>(Signals.first) != "secure"){
+            for (MessageIndex = 0; MessageIndex < Signals.second.size(); MessageIndex++){
+                DataStateAfterReg.push_back(Signals.second.at(MessageIndex));
+
+                for (BitIndex = 1; BitIndex < Code.MessageWidth; BitIndex++){
+                    DataStateAfterReg.emplace_back("1'b0");
+                }
+            }
+        }else{
+            DataStateAfterReg.insert(DataStateAfterReg.end(), Signals.second.begin(), Signals.second.end());
+
+            // Pad data signals if necessary
+            MessageIndex = DataStateAfterReg.size();
+            while (MessageIndex % Code.MessageWidth){
+                DataStateAfterReg.emplace_back("1'b0");
+                MessageIndex++;
+            }               
+        }
+    }
+
+    // Prepare the redundant states with register inputs and outputs
+    for (MessageIndex = 0; MessageIndex < DataStateBeforeReg.size(); MessageIndex += Code.MessageWidth){
+        for (BitIndex = 0; BitIndex < Code.ParityWidth; BitIndex++){
+            RedundancyStateBeforeReg.push_back(DataStateBeforeReg.at(MessageIndex));
+            RedundancyStateBeforeReg.back().ModuleCounter = DataStateBeforeReg.at(MessageIndex).Index;
+            RedundancyStateBeforeReg.back().Index = BitIndex;
+
+            RedundancyStateAfterReg.push_back(DataStateAfterReg.at(MessageIndex));
+            RedundancyStateAfterReg.back().ModuleCounter = DataStateAfterReg.at(MessageIndex).Index;
+            RedundancyStateAfterReg.back().Index = BitIndex;
+
+            // Consider only primary control outputs from the redundancy
+            if (RedundancyStateBeforeReg.back().Annotation != "control"){
+                RedundancyStateBeforeReg.back().PrimaryOutput = false;
+                RedundancyStateAfterReg.back().PrimaryOutput = false;
+            }
+        }
+    }
+
+    // Generate registers of the register stage
+    for (RegisterIndex = 0; RegisterIndex < DataStateBeforeReg.size(); RegisterIndex++){
+        // Add data input if it is no constant and is not already computed
+        if (DataStateBeforeReg.at(RegisterIndex).GetName() != "1'b0"){
+            Design.Reg1.Inputs.push_back(DataStateBeforeReg.at(RegisterIndex));
+            Design.Reg1.Outputs.push_back(DataStateAfterReg.at(RegisterIndex));
+
+            if (Design.Reg1.Inputs.back().GetName() == Design.Reg1.Outputs.back().GetName()){
+                Design.Reg1.Inputs.back().Appendix = DataInputAppendix;
+                Design.Reg1.Outputs.back().Appendix = DataOutputAppendix;
+                Instruction = "assign " + Design.Reg1.Outputs.back().GetName() + " = " + Design.Reg1.Inputs.back().GetName() + ";";
+                Design.Reg1.Instructions.push_back(Instruction);
+            }else{
+                Design.Reg1.Inputs.back().Appendix = DataInputAppendix;
+                Design.Reg1.Outputs.back().Appendix = DataOutputAppendix;
+
+                SharedRegisterInputs[Design.Reg1.Inputs.back().share_domain].push_back(Design.Reg1.Inputs.back().GetName());
+                SharedRegisterOutputs[Design.Reg1.Outputs.back().share_domain].push_back(Design.Reg1.Outputs.back().GetName());
+            }
+        }
+    }
+
+    for (auto const& Register : SharedRegisterInputs){
+        if (Register.second.size() > 0){
+            Instruction = "register_stage #(.WIDTH(" + std::to_string(Register.second.size()) + ")) inst_" + std::to_string(Register.first) + "(.clk(" + Clock.GetName() + "), .D({" + Register.second.at(0);
+            
+            for (RegisterIndex = 1; RegisterIndex < Register.second.size(); RegisterIndex++){
+                Instruction += "," + Register.second.at(RegisterIndex);
+            }
+
+            Instruction += "}), .Q({" + SharedRegisterOutputs.at(Register.first).at(0);
+
+            for (RegisterIndex = 1; RegisterIndex < Register.second.size(); RegisterIndex++){
+                Instruction += "," + SharedRegisterOutputs[Register.first].at(RegisterIndex);
+            }
+
+            Instruction += "}));";
+            Design.Reg1.Instructions.push_back(Instruction);
+        }
+    }
+
+    SharedRegisterInputs.clear();
+    SharedRegisterOutputs.clear();
+
+    std::sort(Design.Reg1.Inputs.begin(), Design.Reg1.Inputs.end(), [] (ImpeccableCircuitsII::Signal &lhs, ImpeccableCircuitsII::Signal &rhs) {return (lhs.GetName() < rhs.GetName());});
+    Design.Reg1.Inputs.erase(std::unique(Design.Reg1.Inputs.begin(), Design.Reg1.Inputs.end(), [] (ImpeccableCircuitsII::Signal &lhs, ImpeccableCircuitsII::Signal &rhs) {return (lhs.GetName() == rhs.GetName());}), Design.Reg1.Inputs.end());
+
+    for (RegisterIndex = 0; RegisterIndex < RedundancyStateBeforeReg.size(); RegisterIndex++){
+        Design.Reg2.Inputs.push_back(RedundancyStateBeforeReg.at(RegisterIndex));
+        Design.Reg2.Outputs.push_back(RedundancyStateAfterReg.at(RegisterIndex));
+
+        if (Design.Reg2.Inputs.back().GetName() == Design.Reg2.Outputs.back().GetName()){
+            Design.Reg2.Inputs.back().Appendix = RedundancyInputAppendix;
+            Design.Reg2.Outputs.back().Appendix = RedundancyOutputAppendix;
+            Instruction = "assign " + Design.Reg2.Outputs.back().GetName() + " = " + Design.Reg2.Inputs.back().GetName() + ";";
+            Design.Reg2.Instructions.push_back(Instruction);
+        }else{
+            Design.Reg2.Inputs.back().Appendix = RedundancyInputAppendix;
+            Design.Reg2.Outputs.back().Appendix = RedundancyOutputAppendix;
+            
+            SharedRegisterInputs[Design.Reg2.Inputs.back().share_domain].push_back(Design.Reg2.Inputs.back().GetName());
+            SharedRegisterOutputs[Design.Reg2.Outputs.back().share_domain].push_back(Design.Reg2.Outputs.back().GetName());
+        }
+    }
+
+    for (auto const& Register : SharedRegisterInputs){
+        if (Register.second.size() > 0){
+            Instruction = "register_stage #(.WIDTH(" + std::to_string(Register.second.size()) + ")) inst_" + std::to_string(Register.first) + "(.clk(" + Clock.GetName() + "), .D({" + Register.second.at(0);
+            
+            for (RegisterIndex = 1; RegisterIndex < Register.second.size(); RegisterIndex++){
+                Instruction += "," + Register.second.at(RegisterIndex);
+            }
+
+            Instruction += "}), .Q({" + SharedRegisterOutputs.at(Register.first).at(0);
+
+            for (RegisterIndex = 1; RegisterIndex < Register.second.size(); RegisterIndex++){
+                Instruction += "," + SharedRegisterOutputs[Register.first].at(RegisterIndex);
+            }
+
+            Instruction += "}));";
+            Design.Reg2.Instructions.push_back(Instruction);
+        }
+    }
+
+    SharedRegisterInputs.clear();
+    SharedRegisterOutputs.clear();
+
+    std::sort(Design.Reg2.Inputs.begin(), Design.Reg2.Inputs.end(), [] (ImpeccableCircuitsII::Signal &lhs, ImpeccableCircuitsII::Signal &rhs) {return (lhs.GetName() < rhs.GetName());});
+    Design.Reg2.Inputs.erase(std::unique(Design.Reg2.Inputs.begin(), Design.Reg2.Inputs.end(), [] (ImpeccableCircuitsII::Signal &lhs, ImpeccableCircuitsII::Signal &rhs) {return (lhs.GetName() == rhs.GetName());}), Design.Reg2.Inputs.end());
+}
+
+bool PrepareLinearComponents(unsigned int MessageWidth, std::vector<ImpeccableCircuitsII::Module>& Round, std::vector<ImpeccableCircuitsII::Module>& Register){
+    std::cout << "Prepare the linear layer...";
+    unsigned int InputIndex, OutputIndex, SignalIndex, TmpIndex, BucketSize, LinearInputsCtr = 0;
+    bool Passed = true;
+
+    std::vector<std::string> LinearInputsPerOutput, LinearInputs, LinearOutputs;
+    std::map<std::string, std::vector<std::string>> IoMapping;
+    std::map<std::string, unsigned int> NameToIndex;
+    std::map<std::string, unsigned int> InputToIndex;
+
+    for (OutputIndex = 0; OutputIndex < Round.size(); OutputIndex++){
+        LinearInputsPerOutput.clear(); 
+        for (InputIndex = 0; InputIndex < Round.at(OutputIndex).Inputs.size(); InputIndex++){
+            if (Round.at(OutputIndex).Inputs.at(InputIndex).Linear){
+                LinearInputs.push_back(Round.at(OutputIndex).Inputs.at(InputIndex).GetName());
+
+                if (Round.at(OutputIndex).Inputs.at(InputIndex).Annotation == "secure"){
+                    LinearInputsCtr++;
+                }else{
+                    LinearInputsCtr+=MessageWidth;
+                }
+
+                LinearInputsPerOutput.push_back(Round.at(OutputIndex).Inputs.at(InputIndex).GetName());
+            }   
+        }
+
+        if (Round.at(OutputIndex).Outputs.back().Linear){
+            std::sort(LinearInputsPerOutput.begin(), LinearInputsPerOutput.end(), [](std::string& a, std::string& b) {if (a.length() == b.length()){return a < b;}else{return a.length() < b.length();}});
+            LinearOutputs.push_back(Round.at(OutputIndex).Outputs.back().GetName());
+            NameToIndex[Round.at(OutputIndex).Outputs.back().GetName()] = OutputIndex;
+            IoMapping[Round.at(OutputIndex).Outputs.back().GetName()] = LinearInputsPerOutput;
+        }     
+    }
+
+    std::sort(LinearInputs.begin(), LinearInputs.end(), [](std::string& a, std::string& b) {if (a.length() == b.length()){return a < b;}else{return a.length() < b.length();}});
+    LinearInputs.erase(std::unique(LinearInputs.begin(), LinearInputs.end()), LinearInputs.end());
+    std::sort(LinearOutputs.begin(), LinearOutputs.end(), [](std::string& a, std::string& b) {if (a.length() == b.length()){return a < b;}else{return a.length() < b.length();}});
+    LinearOutputs.erase(std::unique(LinearOutputs.begin(), LinearOutputs.end()), LinearOutputs.end());
+    std::cout << "#Linear Inputs: " << LinearInputs.size() << ", #Linear Outputs: " << LinearOutputs.size() << "..." << std::flush;
+
+    if ((LinearInputsCtr % MessageWidth) || (LinearOutputs.size() % MessageWidth) || (LinearOutputs.size() == 0)){
+        Passed = false;
+    }
+
+    if (Passed){
+        std::vector<std::vector<std::string>> Buckets;
+
+        for (OutputIndex = 0; OutputIndex < LinearOutputs.size(); OutputIndex += MessageWidth){
+            BucketSize = 0;
+            for (TmpIndex = 0; TmpIndex < MessageWidth; TmpIndex++){
+                if (IoMapping[LinearOutputs.at(OutputIndex + TmpIndex)].size() > BucketSize){
+                    BucketSize = IoMapping[LinearOutputs.at(OutputIndex + TmpIndex)].size();
+                }
+            }
+
+            std::vector<std::vector<std::string>> NewBucket(BucketSize, std::vector<std::string>(MessageWidth, "1'b0"));
+
+            for (TmpIndex = 0; TmpIndex < MessageWidth; TmpIndex++){
+                for (InputIndex = 0; InputIndex < IoMapping[LinearOutputs.at(OutputIndex + TmpIndex)].size(); InputIndex++){
+                    NewBucket.at(InputIndex).at(TmpIndex) = IoMapping[LinearOutputs.at(OutputIndex + TmpIndex)].at(InputIndex);
+                } 
+            }
+
+            Buckets.insert(Buckets.end(), NewBucket.begin(), NewBucket.end());
+        }
+
+        for (OutputIndex = 0; OutputIndex < Buckets.size(); OutputIndex++){
+            for (TmpIndex = 0; TmpIndex < MessageWidth; TmpIndex++){
+                if (Buckets.at(OutputIndex).at(TmpIndex) == "1'b0"){
+                    Passed = false;
+                    break;
+                }else{
+                    if (InputToIndex.find(Buckets.at(OutputIndex).at(TmpIndex)) == InputToIndex.end()){
+                        InputToIndex[Buckets.at(OutputIndex).at(TmpIndex)] = OutputIndex + 1;
+                    }
+                }
+            }
+        }
+    }
+
+    if (Passed){
+        for (OutputIndex = 0; OutputIndex < LinearOutputs.size(); OutputIndex++){
+            Round.at(NameToIndex[LinearOutputs.at(OutputIndex)]).Outputs.back().Linear = (OutputIndex / MessageWidth) + 1;
+
+            for (InputIndex = 0; InputIndex < Round.at(NameToIndex[LinearOutputs.at(OutputIndex)]).Inputs.size(); InputIndex++){
+                Round.at(NameToIndex[LinearOutputs.at(OutputIndex)]).Inputs.at(InputIndex).Linear = InputToIndex[Round.at(NameToIndex[LinearOutputs.at(OutputIndex)]).Inputs.at(InputIndex).GetName()];
+            }     
+        }
+    }else{
+        for (OutputIndex = 0; OutputIndex < Round.size(); OutputIndex++){
+            Round.at(OutputIndex).Outputs.back().Linear = 0;
+
+            for (InputIndex = 0; InputIndex < Round.at(OutputIndex).Inputs.size(); InputIndex++){
+                Round.at(OutputIndex).Inputs.at(InputIndex).Linear = 0;
+            }       
+        }  
+    }
+
+    for (SignalIndex = 0; SignalIndex < Register.size(); SignalIndex++){
+        for (OutputIndex = 0; OutputIndex < Round.size(); OutputIndex++){
+            for (InputIndex = 0; InputIndex < Round.at(OutputIndex).Inputs.size(); InputIndex++){ 
+                if (Round.at(OutputIndex).Inputs.at(InputIndex).GetName() == Register.at(SignalIndex).Outputs.back().GetName()){
+                    Register.at(SignalIndex).Outputs.back().Linear = Round.at(OutputIndex).Inputs.at(InputIndex).Linear;
+                    Register.at(SignalIndex).Inputs.back().Linear = Round.at(OutputIndex).Inputs.at(InputIndex).Linear;
+                    Register.at(SignalIndex).Inputs.back().Depth = Round.at(OutputIndex).Inputs.at(InputIndex).Depth;
+                    Register.at(SignalIndex).Outputs.back().Depth = Round.at(OutputIndex).Inputs.at(InputIndex).Depth + 1;
+                }
+            }
+        }      
+    }
+
+    if (Passed){
+        std::cout << "PASSED" << std::endl;
+        return true;
+    }else{
+        std::cout << "FAILED" << std::endl;
+        return false;
+    }
+}
+
+void ModifyRedundantState(ImpeccableCircuitsII::ErrorCorrectingCode& Code, std::vector<ImpeccableCircuitsII::Module>& Round, std::vector<ImpeccableCircuitsII::Module>& OldRound, std::vector<ImpeccableCircuitsII::Module>& InF, std::map<std::string, ImpeccableCircuitsII::Anf>& SignalToAnf, std::vector<ImpeccableCircuitsII::Signal>& DataSignals){
+    unsigned int Index, InputIndex, MessageIndex, ParityIndex, PrimaryInputIndex, TmpIndex, BitIndex, Offset = 0;
+    unsigned int OldParity, NewParity;
+    std::vector<std::string> OldInstr(Code.MessageWidth);
+    std::vector<std::string> NewInstr(Code.MessageWidth);
+    std::string SignalName, Instruction;
+    size_t InstructionIndex;
+    ImpeccableCircuitsII::Signal Signal;
+    std::vector<ImpeccableCircuitsII::Signal> TmpSignals;
+    
+    // Skip all chunks which are primary control signal outputs
+    // Because of primary control outputs which are not in DataStateBeforeReg
+    for (Index = 0; Index < (Round.size() / Code.ParityWidth); Index++){
+        if (Round.at(Index * Code.ParityWidth).Outputs.back().PrimaryOutput){
+            Offset++;
+        }
+    }
+
+    for (Index = Offset; Index < (Round.size() / Code.ParityWidth); Index++){
+        // Check if the functions of this chunk are all linear
+        for (ParityIndex = 0; ParityIndex < Code.ParityWidth; ParityIndex++){
+            for (InputIndex = 0; InputIndex < Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.size(); InputIndex++){
+                if (!Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).Linear && (Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).Annotation != "reset")){
+                    break;
+                }
+            }
+
+            if (InputIndex != Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.size()){
+                break;
+            }
+        }
+
+        if (ParityIndex == Code.ParityWidth){
+            OldParity = 0;
+            for (MessageIndex = 0; MessageIndex < Code.MessageWidth; MessageIndex++){
+                OldParity <<= 1;
+                OldParity |= SignalToAnf[DataSignals.at((Index - Offset) * Code.MessageWidth + MessageIndex).GetName()].Parity & 1;
+            }
+
+            NewParity = Code.MessageToParity.Mapping.at(OldParity);
+
+            Signal = DataSignals.at((Index - Offset) * Code.MessageWidth);
+            Signal.Appendix = "_R1_out";
+
+            for (TmpIndex = 0; TmpIndex < OldRound.size(); TmpIndex++){
+                if (Signal.GetName() == OldRound.at(TmpIndex).Outputs.back().GetName()){
+                    break;
+                }
+            }
+
+            for (ParityIndex = 0; ParityIndex < Code.ParityWidth; ParityIndex++){
+                for (InputIndex = 0; InputIndex < Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.size(); InputIndex++){  
+                    // Set all indices to the ouput index
+                    if (!Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).PrimaryInput){
+                        Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).Index = Round.at(Index * Code.ParityWidth + ParityIndex).Outputs.back().Index;
+                    }
+                }
+
+                // Remove primary data inputs
+                Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.erase(std::remove_if(Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.begin(), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end(), [](const ImpeccableCircuitsII::Signal& x) {return x.PrimaryInput && x.Annotation != "reset";}), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end());
+            
+                for (InputIndex = 0; InputIndex < OldRound.at(TmpIndex).Inputs.size(); InputIndex++){  
+                    if (OldRound.at(TmpIndex).Inputs.at(InputIndex).PrimaryInput && OldRound.at(TmpIndex).Inputs.at(InputIndex).Annotation != "reset"){
+                        Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.push_back(OldRound.at(TmpIndex).Inputs.at(InputIndex));
+                    }
+                }
+
+                std::sort(Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.begin(), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end(), [](ImpeccableCircuitsII::Signal& a, ImpeccableCircuitsII::Signal& b) {return a.GetName() < b.GetName();});
+                Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.erase(std::unique(Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.begin(), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end(), [](ImpeccableCircuitsII::Signal& a, ImpeccableCircuitsII::Signal& b) {return a.GetName() == b.GetName();}), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end());
+                Round.at(Index * Code.ParityWidth + ParityIndex).Intermediates = OldRound.at(TmpIndex).Intermediates;
+                Round.at(Index * Code.ParityWidth + ParityIndex).Instructions = OldRound.at(TmpIndex).Instructions;
+
+                for (InputIndex = 0; InputIndex < OldRound.at(TmpIndex).Inputs.size(); InputIndex++){  
+                    if (!OldRound.at(TmpIndex).Inputs.at(InputIndex).PrimaryInput){
+                        Signal = OldRound.at(TmpIndex).Inputs.at(InputIndex);
+                        Signal.Appendix = "_Reg2_out";
+                        Signal.ModuleCounter = OldRound.at(TmpIndex).Inputs.at(InputIndex).Index;
+                        Signal.Index = Round.at(Index * Code.ParityWidth + ParityIndex).Outputs.back().Index;
+                        
+                        for (InstructionIndex = 0; InstructionIndex < Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.size(); InstructionIndex++){
+                            Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.at(InstructionIndex) = ImpeccableCircuitsII::ReplaceString(Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.at(InstructionIndex),  OldRound.at(TmpIndex).Inputs.at(InputIndex).GetName(), Signal.GetName());
+                        } 
+                    }
+                }
+
+                Signal = Round.at(Index * Code.ParityWidth + ParityIndex).Outputs.back();
+                Signal.Appendix = "_tmp_out";
+
+                for (InstructionIndex = 0; InstructionIndex < Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.size(); InstructionIndex++){
+                    Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.at(InstructionIndex) = ImpeccableCircuitsII::ReplaceString(Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.at(InstructionIndex), OldRound.at(TmpIndex).Outputs.back().GetName(), Signal.GetName());
+                }
+
+                Round.at(Index * Code.ParityWidth + ParityIndex).Intermediates.push_back(Signal);
+                Instruction = "assign " + Round.at(Index * Code.ParityWidth + ParityIndex).Outputs.back().GetName() + " = " + Signal.GetName() + " ^ " + "1'b" + std::to_string(OldParity & 1) + " ^ 1'b" + std::to_string((NewParity >> ParityIndex) & 1) + ";";
+                Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.push_back(Instruction);
+            }
+
+            for (ParityIndex = 0; ParityIndex < Code.ParityWidth; ParityIndex++){
+                TmpSignals.clear();
+
+                for (InputIndex = 0; InputIndex < Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.size(); InputIndex++){  
+                    if (!Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).PrimaryInput || (Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).Annotation != "reset")){
+                        TmpSignals.push_back(Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex));
+                    }
+                }
+
+                Round.at(Index * Code.ParityWidth + ParityIndex).Inputs = TmpSignals;
+
+                for (InputIndex = 0; InputIndex < OldRound.at(TmpIndex).Inputs.size(); InputIndex++){  
+                    if (OldRound.at(TmpIndex).Inputs.at(InputIndex).Annotation == "reset"){
+                        Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.push_back(OldRound.at(TmpIndex).Inputs.at(InputIndex));
+                    }
+                }
+            }
+
+            // Process primary inputs
+            for (ParityIndex = 0; ParityIndex < Code.ParityWidth; ParityIndex++){
+                TmpSignals.clear();
+                for (InputIndex = 0; InputIndex < Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.size(); InputIndex++){  
+                    if ((Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).PrimaryInput) && Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).Annotation != "reset"){
+                        bool Found = false;
+
+                        for (PrimaryInputIndex = 0; PrimaryInputIndex < InF.size(); PrimaryInputIndex += Code.ParityWidth){
+                            for (MessageIndex = 0; MessageIndex < Code.ParityWidth; MessageIndex++){
+                                for (BitIndex = 0; BitIndex < InF.at(PrimaryInputIndex + MessageIndex).Inputs.size(); BitIndex += Code.ParityWidth){
+                                    if (InF.at(PrimaryInputIndex + MessageIndex).Inputs.at(BitIndex).GetName() == Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).GetName()){
+                                        Found = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (Found){
+                                break;
+                            }
+                        }
+
+                        for (InstructionIndex = 0; InstructionIndex < Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.size(); InstructionIndex++){
+                                Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.at(InstructionIndex) = ImpeccableCircuitsII::ReplaceString(Round.at(Index * Code.ParityWidth + ParityIndex).Instructions.at(InstructionIndex), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.at(InputIndex).GetName(), InF.at(PrimaryInputIndex + ParityIndex).Outputs.back().GetName());
+                        } 
+
+                        TmpSignals.push_back(InF.at(PrimaryInputIndex + ParityIndex).Outputs.back().GetName());
+                    }
+                }
+
+                Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.insert(Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end(), TmpSignals.begin(), TmpSignals.end());
+                
+                // Remove primary data inputs
+                Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.erase(std::remove_if(Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.begin(), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end(), [](const ImpeccableCircuitsII::Signal& x) {return x.PrimaryInput && x.Annotation != "reset";}), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end());
+                std::sort(Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.begin(), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end(), [](ImpeccableCircuitsII::Signal& a, ImpeccableCircuitsII::Signal& b) {return a.GetName() < b.GetName();});
+                Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.erase(std::unique(Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.begin(), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end(), [](ImpeccableCircuitsII::Signal& a, ImpeccableCircuitsII::Signal& b) {return a.GetName() == b.GetName();}), Round.at(Index * Code.ParityWidth + ParityIndex).Inputs.end());
+            }
+        }
+    }
+}
+
+void GenerateRoundFunctions(std::string SourcePath, std::string Topmodule, std::string AttributeReportFileName,  CircuitStruct* Circuit, CircuitStruct* SecureCombCircuit, ImpeccableCircuitsII::ErrorCorrectingCode& Code, ImpeccableCircuitsII::Design& Design, bool Comments){
+    // Output file stream to write verilog circuit
+    std::string DirectoryPath = SourcePath.substr(0, SourcePath.find_last_of("/"));
+    std::string DestinationPath = DirectoryPath + "/" + Topmodule + "_Round.v";
+    std::cout << "Store: " << DestinationPath << std::endl;
+    std::string NameOfSignal;
+    std::ofstream Netlist(DestinationPath);   
+    unsigned int InputIndex, OutputIndex, TmpIndex; 
+    
+    std::string ResetSignalName = SecureCombCircuit->Signals[SecureCombCircuit->ResetSignalIndex]->Name;
+
+    // Print module information
+    if (Comments){
+        Netlist << "// Generated by AGEMA (https://github.com/Chair-for-Security-Engineering/AGEMA)" << std::endl;
+        Netlist << std::endl;
+    }
+
+    std::vector<ImpeccableCircuitsII::Signal> DataStateBeforeReg, DataStateAfterReg, RedundancyStateBeforeReg, RedundancyStateAfterReg, DataPrimaryState, RedundancyPrimaryState;
+    ImpeccableCircuitsII::Signal Clock;
+
+    // Prepare clock signal
+    Clock.Name = Circuit->Signals[Circuit->ClockSignalIndex]->Name;
+    Clock.Annotation = "clock";
+    Clock.PrimaryInput = true;
+
+    Design.Decomposed = PrepareLinearComponents(Code.MessageWidth, Design.R, Design.Reg);
+    GenerateRegisterModule(SourcePath, Topmodule, AttributeReportFileName, Code, Clock, Design, DataStateBeforeReg, RedundancyStateBeforeReg, DataStateAfterReg, RedundancyStateAfterReg, DataPrimaryState, RedundancyPrimaryState, "Reg1", "_R1_out", "_Reg1_out", "Reg2", "_F2_2_out", "_Reg2_out");
+    Design.Reg1.PrintModule(Netlist, Comments, false);
+    Design.Reg2.PrintModule(Netlist, Comments, false);
+
+    std::vector<ImpeccableCircuitsII::Module> InF, R1, R2, F1_1, F2_1, F2_2, Finv, Xor1_1, Xor2_1, Xor1_2, Xor2_2, Sd1, Sd2;
+
+    InF = PrepareRedundantLayer(Code.MessageWidth, DataPrimaryState, RedundancyPrimaryState, Design.F, "no_appendix", "no_appendix", "_InF_out");
+
+    // Upper half
+    F1_1 = PrepareRedundantLayer(Code.MessageWidth, DataStateAfterReg, RedundancyStateAfterReg, Design.F, "_Reg1_out", "_Reg1_out", "_F1_1_out");
+    Xor1_1 = PrepareXorLayer(RedundancyStateAfterReg, "_F1_1_out", "_Reg2_out", "_Xor1_1_out");
+    Sd1 = PrepareRedundantLayer(Code.ParityWidth, RedundancyStateAfterReg, DataStateAfterReg, Design.Sd1, "_Xor1_1_out", "_Xor1_1_out", "_Sd1_out");
+    Xor1_2 = PrepareXorLayer(DataStateAfterReg, "_Sd1_out", "_Reg1_out", "_Xor1_2_out");
+    R1 = PrepareRoundLayer(Design.R, "_Xor1_2_out", "_Reg1_out", "_R1_out");
+
+    // Lower half
+    F2_1 = PrepareRedundantLayer(Code.MessageWidth, DataStateAfterReg, RedundancyStateAfterReg, Design.F, "_Reg1_out", "_Reg1_out", "_F2_1_out");
+    Xor2_1 = PrepareXorLayer(RedundancyStateAfterReg, "_F2_1_out", "_Reg2_out", "_Xor2_1_out");
+    Sd2 = PrepareRedundantLayer(Code.ParityWidth, RedundancyStateAfterReg, RedundancyStateAfterReg, Design.Sd2, "_Xor2_1_out", "_Xor2_1_out", "_Sd2_out");
+    Xor2_2 = PrepareXorLayer(RedundancyStateAfterReg, "_Sd2_out", "_Reg2_out", "_Xor2_2_out");   
+    
+    Finv = PrepareRedundantLayer(Code.ParityWidth, RedundancyStateAfterReg, DataStateAfterReg, Design.InvF, "_Xor2_2_out", "_Reg2_out", "_Finv_out");
+    R2 = PrepareRoundLayer(Design.R, "_Finv_out", "_Finv_out",  "_R2_out");
+    F2_2 = PrepareRedundantLayer(Code.MessageWidth, DataStateBeforeReg, RedundancyStateBeforeReg, Design.F, "_R2_out", "_R2_out", "_F2_2_out");
+
+    for (OutputIndex = 0; OutputIndex < Finv.size(); OutputIndex++){Finv.at(OutputIndex).Outputs.back().PrimaryOutput = false;}
+    for (OutputIndex = 0; OutputIndex < F1_1.size(); OutputIndex++){F1_1.at(OutputIndex).Outputs.back().PrimaryOutput = false;}
+    for (OutputIndex = 0; OutputIndex < F2_1.size(); OutputIndex++){F2_1.at(OutputIndex).Outputs.back().PrimaryOutput = false;}
+    for (OutputIndex = 0; OutputIndex < Xor1_1.size(); OutputIndex++){Xor1_1.at(OutputIndex).Outputs.back().PrimaryOutput = false;}
+    for (OutputIndex = 0; OutputIndex < Xor2_1.size(); OutputIndex++){Xor2_1.at(OutputIndex).Outputs.back().PrimaryOutput = false;}
+    for (OutputIndex = 0; OutputIndex < R1.size(); OutputIndex++){R1.at(OutputIndex).Outputs.back().PrimaryOutput = false;}
+    for (OutputIndex = 0; OutputIndex < R2.size(); OutputIndex++){R2.at(OutputIndex).Outputs.back().PrimaryOutput = false;}
+    for (OutputIndex = 0; OutputIndex < Sd1.size(); OutputIndex++){Sd1.at(OutputIndex).Outputs.back().PrimaryOutput = false;}
+    for (OutputIndex = 0; OutputIndex < Sd2.size(); OutputIndex++){Sd2.at(OutputIndex).Outputs.back().PrimaryOutput = false;}
+
+    for (OutputIndex = 0; OutputIndex < Xor2_2.size(); OutputIndex++){
+        if (Xor2_2.at(OutputIndex).Outputs.back().Annotation != "control"){
+            Xor2_2.at(OutputIndex).Outputs.back().PrimaryOutput = false;
+        }
+    }        
+    
+    std::vector<ImpeccableCircuitsII::Module> Fx, R1x, R1ind, FR2, FR2Finv, FR2FinvX, FR2FinvXSd2, FR2FinvXSd2x, R2ind;
+
+    // Upper half
+    Fx = ImpeccableCircuitsII::CombineTwoLayersIndependently(F1_1, Xor1_1, "Fx");
+    R1x = ImpeccableCircuitsII::CombineTwoLayersIndependently(Xor1_2, R1, "R1x");
+    R1ind = ImpeccableCircuitsII::CombineTwoLayersIndependently(Sd1, R1x, "R1ind");
+
+    // Lower half
+    FR2 = ImpeccableCircuitsII::CombineTwoLayersIndependently(R2, F2_2, "FR2");
+    FR2Finv = ImpeccableCircuitsII::CombineTwoLayersIndependently(Finv, FR2, "FR2Finv");
+    FR2FinvX = ImpeccableCircuitsII::CombineTwoLayersIndependently(Xor2_2, FR2Finv, "FR2FinvX");
+    FR2FinvXSd2 = ImpeccableCircuitsII::CombineTwoLayersIndependently(Sd2, FR2FinvX, "FR2FinvXSd2");
+    FR2FinvXSd2x = ImpeccableCircuitsII::CombineTwoLayersIndependently(Xor2_1, FR2FinvXSd2, "FR2FinvXSd2x");
+    R2ind = ImpeccableCircuitsII::CombineTwoLayersIndependently(F2_1, FR2FinvXSd2x, "R2ind");
+
+    if (Design.Decomposed){
+        ModifyRedundantState(Code, R2ind, R1, InF, Design.SignalToAnf, DataStateBeforeReg);
+    }
+
+    // Remove unused modules
+    for (OutputIndex = 0; OutputIndex < Fx.size(); OutputIndex++){
+        for (TmpIndex = 0; TmpIndex < R1ind.size(); TmpIndex++){
+            for (InputIndex = 0; InputIndex < R1ind.at(TmpIndex).Inputs.size(); InputIndex++){
+                if (Fx.at(OutputIndex).Outputs.back().GetName() == R1ind.at(TmpIndex).Inputs.at(InputIndex).GetName()){
+                    break;
+                }
+            }
+                
+            if (InputIndex != R1ind.at(TmpIndex).Inputs.size()){
+                break;
+            }
+        }
+
+        if (TmpIndex == R1ind.size()){
+            Fx.at(OutputIndex).Inputs.clear();
+            Fx.at(OutputIndex).Outputs.clear();
+            Fx.at(OutputIndex).Instructions.clear();
+        }
+    }
+
+    Fx.erase(std::remove_if(Fx.begin(), Fx.end(), [](ImpeccableCircuitsII::Module Module) { return (Module.Inputs.empty() && Module.Outputs.empty()); }), Fx.end());
+
+    for (OutputIndex = 0; OutputIndex < R2ind.size(); OutputIndex++){
+        for (int Index = OutputIndex - 1; Index >= 0; Index--){
+            if (R2ind.at(Index).Outputs.size()){
+                if (R2ind.at(OutputIndex).Outputs.back().GetName() == R2ind.at(Index).Outputs.back().GetName()){
+                    R2ind.at(OutputIndex).Inputs.clear();
+                    R2ind.at(OutputIndex).Outputs.clear();
+                    R2ind.at(OutputIndex).Instructions.clear();
+                    break;
+                }
+            }
+        }
+    }
+
+    R2ind.erase(std::remove_if(R2ind.begin(), R2ind.end(), [](ImpeccableCircuitsII::Module Module) { return (Module.Inputs.empty() && Module.Outputs.empty()); }), R2ind.end());
+
+    if (Design.Decomposed){
+        Design.InF = BuildTopmodule(InF, "InF");
+        Design.InF.Instructions.clear();
+
+        for (OutputIndex = 0; OutputIndex < InF.size(); OutputIndex++){
+            Design.InF.Instructions.push_back(InF.at(OutputIndex).Instructions.back());
+        }
+
+        Design.InF.PrintModule(Netlist, Comments, false);    
+    }
+
+    Design.Fx = BuildTopmodule(Fx, "FX");
+    ImpeccableCircuitsII::PrintModules(Fx, Netlist, Comments, true);
+    Design.Fx.PrintModule(Netlist, Comments, false);
+
+    Design.R1_ind = BuildTopmodule(R1ind, "R1_ind");
+    ImpeccableCircuitsII::PrintModules(R1ind, Netlist, Comments, true);
+    Design.R1_ind.PrintModule(Netlist, Comments, false);
+    
+    Design.R2_ind = BuildTopmodule(R2ind, "R2_ind");
+    ImpeccableCircuitsII::PrintModules(R2ind, Netlist, Comments, true);
+    Design.R2_ind.PrintModule(Netlist, Comments, false);
+
+    Netlist.close();
+}
+
+int convertImpeccableCircuitsII(std::string SourcePath, std::string Topmodule, std::string AttributeReportFileName, LibraryStruct* Library, CircuitStruct* Circuit, CircuitStruct* SecureCombCircuit, char k, char Order, bool NoOptimize){
+    // Comments for debugging
+    bool Comments = false;
+    
+    bool Optimize = !NoOptimize;
+    timespec Begin, End;
+
+    clock_gettime(CLOCK_REALTIME, &Begin);
+
+    // Check if inputs and outputs are correct
+    bool Correct, OneNotCorrect = false;
+    std::string RoundFunctionInput, PrimaryInput, FeedbackSignal;
+
+    std::cout << "Check all round function inputs. Every round function input must be a primary input or feedback signal..." << std::flush;
+    for (int i = 0; i < SecureCombCircuit->NumberOfInputs; i++){
+        Correct = false;
+        RoundFunctionInput = SecureCombCircuit->Signals[SecureCombCircuit->Inputs[i]]->Name;
+
+        for (int j = 0; j < Circuit->NumberOfInputs; j++){
+            PrimaryInput = Circuit->Signals[Circuit->Inputs[j]]->Name;
+            if (PrimaryInput == RoundFunctionInput){
+                Correct = true;
+            }
+        }
+
+        if (!Correct){
+            for (int j = 0; j < Circuit->NumberOfRegs; j++){
+                FeedbackSignal = Circuit->Signals[Circuit->Cells[Circuit->Regs[j]]->Outputs[0]]->Name;
+
+                if (FeedbackSignal == RoundFunctionInput){
+                    Correct = true;
+                }
+            }     
+        }   
+
+        if (!Correct){
+            std::cout << "Problem with: " << RoundFunctionInput << std::endl;
+            OneNotCorrect = true;
+        }
+    }
+
+    // Create error correcting code
+    if (!OneNotCorrect){
+        std::cout << "PASS" << std::endl;
+        ImpeccableCircuitsII::ErrorCorrectingCode Code(k, Order, Optimize);
+
+        // Create design functions
+        ImpeccableCircuitsII::Design Design(Library, Circuit, SecureCombCircuit, Code, Comments);
+        //Design.PrintCodes(SourcePath, Topmodule, Comments);
+
+        GenerateRoundFunctions(SourcePath, Topmodule, AttributeReportFileName, Circuit, SecureCombCircuit, Code, Design, Comments);
+        BuildMainFile(SourcePath, Topmodule, AttributeReportFileName, Design, Circuit, Code, Comments);
+    }else{
+        std::cout << "FAIL" << std::endl;
+        std::cout << "Remember that AGEMA has difficulties to handle the flip-flops when both outputs are used." << std::endl;
+        std::cout << "The resulting netlist should be edited by replacing all DFF_X1 modules by MyDFF." << std::endl;
+        std::cout << "The edited (yet non-flattended) netlist together with the MyDFF.v file should be recompiled." << std::endl;
+    }
+
+    clock_gettime(CLOCK_REALTIME, &End);
+    long TimeInSeconds = End.tv_sec - Begin.tv_sec;
+    long TimeInNanoseconds = End.tv_nsec - Begin.tv_nsec;
+    double ElapsedTimePeriod = TimeInSeconds + TimeInNanoseconds*1e-9;
+    std::cout << "Impeccable Circuits II done in " << ElapsedTimePeriod << "s." << std::endl;
+
+    return 0;
 }
 
 int convert(std::string filepath, std::string scheme, bool low_latency, bool pipeline, std::string LibraryPath){

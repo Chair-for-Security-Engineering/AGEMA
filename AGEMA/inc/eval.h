@@ -5,7 +5,7 @@
  * DOCUMENT: https://eprint.iacr.org/2021/569/
  * -----------------------------------------------------------------
  *
- * Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Müller, Pascal Sasdrich
+ * Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Mï¿½ller, Pascal Sasdrich
  *
  * All rights reserved.
  *
@@ -23,6 +23,7 @@
  * Please see LICENSE and README for license and further instructions.
  */
 
+#pragma once
 
 #include <string>
 

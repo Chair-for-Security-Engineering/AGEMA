@@ -5,7 +5,7 @@
  * DOCUMENT: https://eprint.iacr.org/2021/569/
  * -----------------------------------------------------------------
  *
- * Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Müller, Pascal Sasdrich
+ * Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Mï¿½ller, Pascal Sasdrich
  *
  * All rights reserved.
  *
@@ -23,12 +23,16 @@
  * Please see LICENSE and README for license and further instructions.
  */
 
+#pragma once
+
 //#include <cstdio>
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
 #include "ctype.h"
 #include "math.h"
+#include "eval.h"
+#include "types.h"
 
 #include <sys/stat.h>
 #include <iostream>
@@ -86,108 +90,6 @@
 #define LMDPL_PreCharge1SignalName   "LMDPL_pre1"
 #define LMDPL_PreCharge2SignalName   "LMDPL_pre2"
 #define LMDPL_MiddleResetSignalName  "mid_rst"
-
-struct CellTypeStruct {
-	char	GateOrReg;
-	int		Type;
-	char	NumberOfCases;
-	char**	Cases;
-	int 	NumberOfInputs;
-	char**	Inputs;
-	int 	NumberOfOutputs;
-	char**	Outputs;
-	short	NumberOfStages;
-	int		SCAType;
-	int		SCAType2;   // for example for MUX2, where the select signal is not secure
-	char*   CustomName; // for the .nl file to generate BDD
-	char*   PrintName;  // for the verilog file and cells with the same name but different generics
-	char*   Generic;    // for the verilog file and cells with the same name but different generics
-};
-
-
-struct CellStruct {
-	int		Type;
-	char*	Name;
-	char*   Generic;
-	short	Depth;
-	int 	NumberOfInputs;
-	int*	Inputs;
-	int 	NumberOfOutputs;
-	int*	Outputs;
-	char	ToBeSecured;
-	int		OrigType;
-	short	NumberOfStages;
-	char	Deleted;
-};
-
-struct SignalStruct {
-	char*	Name;
-	char	FreshMask;
-	char	Type;
-	char    WireType;
-	short	Depth;
-	int		Output;
-	int		NumberOfInputs;
-	int*	Inputs;
-	char*   Attribute;
-	char	ToBeSecured;
-	char	ToBeBalanced;
-	int		NextShare;
-	int     NextRail;
-	int     NextPhase;
-	char	Printed;
-	char	Deleted;
-};
-
-struct LibraryStruct {
-	CellTypeStruct**	CellTypes = NULL;
-	int					NumberOfCellTypes          =  0;
-	int					BufferCellType             = -1;
-	int					RegBufferCellType          = -1;
-	int					RegSCABufferCellType       = -1;
-	int					ClockGatingCellType        = -1;
-	int                 LMDPL_PrechargeCellType    = -1;
-	int                 LMDPL_RegPrechargeCellType = -1;
-	int                 LMDPL_ClockControlCellType = -1;
-	int                 LMDPL_Reg_sr_CellType      = -1;
-};
-
-struct CircuitStruct {
-	SignalStruct **Signals = NULL;
-	int          NumberOfSignals;
-	int          *Constants = NULL;
-	int          NumberOfConstants = 0;
-	int          *Inputs = NULL;
-	int          *Outputs = NULL;
-	int          NumberOfInputs;
-	int          NumberOfOutputs;
-
-	CellStruct   **Cells = NULL;
-	int          NumberOfCells;
-	int          *Gates = NULL;
-	int          *Regs = NULL;
-	int          NumberOfGates;
-	int          NumberOfRegs;
-	int          ClockSignalIndex = -1;
-	int          ResetSignalIndex = -1;
-
-	short        MaxDepth = 0;
-	int          **CellsInDepth = NULL;
-	int          *NumberOfCellsInDepth = NULL;
-	int			 *FreshMasks = NULL;
-	int			 NumberOfFreshMasks = 0;
-
-	int			 LMDPL_PowerUpResetSignalIndex = -1;
-	int			 LMDPL_PreCharge1SignalIndex = -1;
-	int			 LMDPL_PreCharge2SignalIndex = -1;
-	int			 LMDPL_MiddleResetSignalIndex = -1;
-};
-
-struct FileBufferStruct {
-	char* Buffer;
-	int   Size;
-	int   Index;
-};
 
 //***************************************************************************************
 
@@ -1742,7 +1644,9 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	int				NewAttributeIndex;
 	int				TempAttributeIndex;
 	char**			InputAttributes = NULL;
+	char**			OutputAttributes = NULL;
 	int				NumberOfInputAttributes = 0;
+	int				NumberOfOutputAttributes = 0;
 	char**			Buffer_char;
 	unsigned char	WithAttributes;
 	CircuitStruct   SubCircuit;
@@ -1774,7 +1678,6 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 	Circuit->NumberOfSignals = 0;
 	Circuit->NumberOfOutputs = 0;
 	Circuit->NumberOfInputs = 0;
-
 
 	Circuit->NumberOfCells = 0;
 	Circuit->NumberOfGates = 0;
@@ -2075,8 +1978,10 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 												Circuit->ClockSignalIndex = SignalIndex;
 											else if (!strcmp(NewAttributes[NewAttributeIndex], "reset"))
 												Circuit->ResetSignalIndex = SignalIndex;
-											else if (strcmp(NewAttributes[NewAttributeIndex], "secure") &&
-												strcmp(NewAttributes[NewAttributeIndex], "constant"))
+											else if ((strstr(NewAttributes[NewAttributeIndex], "secure_") != NewAttributes[NewAttributeIndex]) &&
+												strcmp(NewAttributes[NewAttributeIndex], "secure") &&
+												strcmp(NewAttributes[NewAttributeIndex], "constant") &&
+												strcmp(NewAttributes[NewAttributeIndex], "control"))
 											{
 												printf("\nattribute %s is not known for input %s\n", NewAttributes[NewAttributeIndex], Str2);
 												free(Str1);
@@ -2089,8 +1994,8 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 											Circuit->Signals[SignalIndex]->Attribute = (char*)malloc((strlen(NewAttributes[NewAttributeIndex]) + 1) * sizeof(char));
 											strcpy(Circuit->Signals[SignalIndex]->Attribute, NewAttributes[NewAttributeIndex]);
 
-											if (strcmp(NewAttributes[NewAttributeIndex], "secure") && // add it to the list if it is not secure nor constant
-												strcmp(NewAttributes[NewAttributeIndex], "constant"))
+											if ((strstr(NewAttributes[NewAttributeIndex], "secure_") == NewAttributes[NewAttributeIndex]) && // add it to the list if it is not secure nor constant
+											    (NumberOfNewAttributes > 1))
 											{
 												Buffer_char = (char**)malloc((NumberOfInputAttributes + 1) * sizeof(char*));
 												memcpy(Buffer_char, InputAttributes, NumberOfInputAttributes * sizeof(char*));
@@ -2132,13 +2037,66 @@ int ReadDesignFile(char* InputVerilogFileName, char* MainModuleName,
 										Circuit->Outputs[Circuit->NumberOfOutputs] = SignalIndex + NumberOfSignalsOffset;
 										Circuit->NumberOfOutputs++;
 
-										Circuit->Signals[SignalIndex]->Attribute = (char*)calloc(1, sizeof(char));
+										if (NewAttributeIndex < NumberOfNewAttributes)
+										{
+											for (TempAttributeIndex = 0;TempAttributeIndex < NumberOfOutputAttributes;TempAttributeIndex++)
+												if (!strcmp(OutputAttributes[TempAttributeIndex], NewAttributes[NewAttributeIndex]))
+													break;
+
+											if (TempAttributeIndex < NumberOfOutputAttributes)
+											{
+												printf("\ndouplicat attribute %s found for output %s\n", NewAttributes[NewAttributeIndex], Str2);
+												fclose(DesignFile);
+												free(Str1);
+												free(Str2);
+												free(Phrase);
+												free(AttributeText);
+												return 1;
+											}
+
+											if (strcmp(NewAttributes[NewAttributeIndex], "control"))
+											{
+												printf("\nattribute %s is not known for output %s\n", NewAttributes[NewAttributeIndex], Str2);
+												fclose(DesignFile);
+												free(Str1);
+												free(Str2);
+												free(Phrase);
+												free(AttributeText);
+												return 1;
+											}
+
+											Circuit->Signals[SignalIndex]->Attribute = (char*)malloc((strlen(NewAttributes[NewAttributeIndex]) + 1) * sizeof(char));
+											strcpy(Circuit->Signals[SignalIndex]->Attribute, NewAttributes[NewAttributeIndex]);		
+
+											if (strcmp(NewAttributes[NewAttributeIndex], "control")) // add it to the list if it is not control
+											{
+												Buffer_char = (char**)malloc((NumberOfOutputAttributes + 1) * sizeof(char*));
+												memcpy(Buffer_char, OutputAttributes, NumberOfOutputAttributes * sizeof(char*));
+												free(OutputAttributes);
+												OutputAttributes = Buffer_char;
+
+												OutputAttributes[NumberOfOutputAttributes] = (char*)malloc((strlen(NewAttributes[NewAttributeIndex]) + 1) * sizeof(char));
+												strcpy(OutputAttributes[NumberOfOutputAttributes], NewAttributes[NewAttributeIndex]);
+												NumberOfOutputAttributes++;
+												NewAttributeIndex++;
+											}										
+										}else{
+											Circuit->Signals[SignalIndex]->Attribute = (char*)calloc(1, sizeof(char));
+										}
+										
 										Circuit->Signals[SignalIndex]->ToBeBalanced = 1;
 									}
 									if ((!strcmp(Phrase, "wire")) && (SignalIndex == Circuit->NumberOfSignals - 1))
 									{
+										if (NewAttributeIndex < NumberOfNewAttributes){
+											Circuit->Signals[SignalIndex]->Attribute = (char*)malloc((strlen(NewAttributes[NewAttributeIndex]) + 1) * sizeof(char));
+											strcpy(Circuit->Signals[SignalIndex]->Attribute, NewAttributes[NewAttributeIndex]);
+										}else{
+											Circuit->Signals[SignalIndex]->Attribute = (char*)calloc(1, sizeof(char));
+										}
+
 										Circuit->Signals[SignalIndex]->Type = SignalType_wire;
-										Circuit->Signals[SignalIndex]->Attribute = (char*)calloc(1, sizeof(char));
+										//Circuit->Signals[SignalIndex]->Attribute = (char*)calloc(1, sizeof(char));
 										Circuit->Signals[SignalIndex]->ToBeBalanced = 1;
 									}
 								}
@@ -4087,7 +4045,7 @@ void AddFreshtoSCACell(CircuitStruct* Circuit, LibraryStruct* Library, int CellI
 	free(Str);
 }
 
-void PropagateSecureSignals(CircuitStruct* Circuit, char print = 1)
+void PropagateSecureSignals(CircuitStruct* Circuit, char* Method, char print = 1)
 {
 	int		CellIndex;
 	int		RegIndex;
@@ -4103,11 +4061,20 @@ void PropagateSecureSignals(CircuitStruct* Circuit, char print = 1)
 	// mark all signals insecure except "secure" primary inputs
 	for (SignalIndex = 0;SignalIndex < Circuit->NumberOfSignals;SignalIndex++)
 		if (!Circuit->Signals[SignalIndex]->Deleted)
-			if ((Circuit->Signals[SignalIndex]->Type == SignalType_input) &&
-				(!strcmp(Circuit->Signals[SignalIndex]->Attribute, "secure")))
-				Circuit->Signals[SignalIndex]->ToBeSecured = 1;
+			if (!strcmp(Method, "IC2"))
+				if ((Circuit->Signals[SignalIndex]->Type == SignalType_input) && 
+					(!strcmp(Circuit->Signals[SignalIndex]->Attribute, "secure") || 
+					!strcmp(Circuit->Signals[SignalIndex]->Attribute, "reset") || 
+					!strcmp(Circuit->Signals[SignalIndex]->Attribute, "constant")))
+					Circuit->Signals[SignalIndex]->ToBeSecured = 1;
+				else
+					Circuit->Signals[SignalIndex]->ToBeSecured = 0;
 			else
-				Circuit->Signals[SignalIndex]->ToBeSecured = 0;
+				if ((Circuit->Signals[SignalIndex]->Type == SignalType_input) &&
+					(!strcmp(Circuit->Signals[SignalIndex]->Attribute, "secure")))
+					Circuit->Signals[SignalIndex]->ToBeSecured = 1;
+				else
+					Circuit->Signals[SignalIndex]->ToBeSecured = 0;
 
 	// mark all gates insecure
 	for (CellIndex = 0;CellIndex < Circuit->NumberOfCells;CellIndex++)
@@ -4139,7 +4106,6 @@ void PropagateSecureSignals(CircuitStruct* Circuit, char print = 1)
 						NewlySecured = 1;
 						NumberOfSecureCells++;
 					}
-
 
 					for (OutputIndex = 0;OutputIndex < Circuit->Cells[CellIndex]->NumberOfOutputs;OutputIndex++)
 						if (Circuit->Cells[CellIndex]->Outputs[OutputIndex] != -1)
@@ -4319,7 +4285,7 @@ int LMDPL_AddPrechargeModules(LibraryStruct* Library, CircuitStruct* Circuit)
 	return(PrechargeCounter);
 }
 
-int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOrder, char* Scheme, char MakePipeline)
+int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char* Method, char SecurityOrder, char* Scheme, char MakePipeline)
 {
 	int		GateIndex;
 	int		CellIndex;
@@ -4378,7 +4344,7 @@ int ApplyMasking(LibraryStruct* Library, CircuitStruct* Circuit, char SecurityOr
 		if (!res)
 		{
 			// propagape secure signals into the circuit
-			PropagateSecureSignals(Circuit);
+			PropagateSecureSignals(Circuit, Method);
 
 			// set NextShare of all signals to -1 except constants
 			NullifyNextShares(Circuit);
@@ -4759,8 +4725,8 @@ int ExtractSecureCombinatorial(LibraryStruct* Library, CircuitStruct* Circuit, C
 		printf("the circuit has a logic depth of %d\n", Circuit->MaxDepth);
 
 		// propagape secure signals into the circuit
-		PropagateSecureSignals(Circuit);
-		PropagateSecureSignals(SecureCombCircuit, 0);
+		PropagateSecureSignals(Circuit, Method);
+		PropagateSecureSignals(SecureCombCircuit, Method, 0);
 
 		for (RegIndex = SecureCombCircuit->NumberOfRegs - 1;RegIndex >= 0;RegIndex--)
 		{
@@ -4806,236 +4772,204 @@ int ExtractSecureCombinatorial(LibraryStruct* Library, CircuitStruct* Circuit, C
 			}
 		}
 
-		do
+
+		if (strcmp(Method, "IC2"))
 		{
-			AtLeastOneFound = 0;
-
-			// finding the MUXes and XORs at the start and end of the secure zone
-			for (CellIndex = 0;CellIndex < SecureCombCircuit->NumberOfCells;CellIndex++)
+			do
 			{
-				//finding MUXes
+				AtLeastOneFound = 0;
 
-				if ((!SecureCombCircuit->Cells[CellIndex]->Deleted) &&
-					(Library->CellTypes[SecureCombCircuit->Cells[CellIndex]->Type]->Type & GateType_Mux2) &&
-					(SecureCombCircuit->Cells[CellIndex]->ToBeSecured) &&
-					(!SecureCombCircuit->Signals[Circuit->Cells[CellIndex]->Inputs[0]]->ToBeSecured))
+				// finding the MUXes and XORs at the start and end of the secure zone
+				for (CellIndex = 0;CellIndex < SecureCombCircuit->NumberOfCells;CellIndex++)
 				{
-					SignalIndex1 = Circuit->Cells[CellIndex]->Inputs[1];
-					SignalIndex2 = Circuit->Cells[CellIndex]->Inputs[2];
-
-					if (((SecureCombCircuit->Signals[SignalIndex1]->Depth == 0) ||
-						(!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex1]->Output]->ToBeSecured)) &&
-						((SecureCombCircuit->Signals[SignalIndex2]->Depth == 0) ||
-						(!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex2]->Output]->ToBeSecured)))
+					//finding MUXes
+					if ((!SecureCombCircuit->Cells[CellIndex]->Deleted) &&
+						(Library->CellTypes[SecureCombCircuit->Cells[CellIndex]->Type]->Type & GateType_Mux2) &&
+						(SecureCombCircuit->Cells[CellIndex]->ToBeSecured) &&
+						(!SecureCombCircuit->Signals[Circuit->Cells[CellIndex]->Inputs[0]]->ToBeSecured))
 					{
-						SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 0;
-						Circuit->Cells[CellIndex]->ToBeSecured = 0;
-						AtLeastOneFound = 1;
-					}
-					else
-					{
-						for (OutputIndex = 0;OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs;OutputIndex++)
-						{
-							SignalIndex = SecureCombCircuit->Cells[CellIndex]->Outputs[OutputIndex];
-							if (SignalIndex != -1)
-							{
-								for (InputIndex = 0;InputIndex < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex++)
-									if ((Library->CellTypes[SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->GateOrReg != CellType_Reg) &&
-										(SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex]]->ToBeSecured))
-										break;
+						SignalIndex1 = Circuit->Cells[CellIndex]->Inputs[1];
+						SignalIndex2 = Circuit->Cells[CellIndex]->Inputs[2];
 
-								if (InputIndex < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
-									break;
-							}
-						}
-
-						if (OutputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs)
+						if (((SecureCombCircuit->Signals[SignalIndex1]->Depth == 0) ||
+							(!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex1]->Output]->ToBeSecured)) &&
+							((SecureCombCircuit->Signals[SignalIndex2]->Depth == 0) ||
+							(!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex2]->Output]->ToBeSecured)))
 						{
 							SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 0;
 							Circuit->Cells[CellIndex]->ToBeSecured = 0;
 							AtLeastOneFound = 1;
 						}
-					}
-				}
-
-				//finding XORs
-
-				if ((!SecureCombCircuit->Cells[CellIndex]->Deleted) &&
-					(Library->CellTypes[SecureCombCircuit->Cells[CellIndex]->Type]->Type & GateType_XOR) &&
-					(SecureCombCircuit->Cells[CellIndex]->ToBeSecured))
-				{
-					SignalIndex1 = Circuit->Cells[CellIndex]->Inputs[0];
-					SignalIndex2 = Circuit->Cells[CellIndex]->Inputs[1];
-
-					if (((SecureCombCircuit->Signals[SignalIndex1]->Depth == 0) ||
-						(!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex1]->Output]->ToBeSecured)) &&
-						((SecureCombCircuit->Signals[SignalIndex2]->Depth == 0) ||
-						(!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex2]->Output]->ToBeSecured)))
-					{
-						SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 0;
-						Circuit->Cells[CellIndex]->ToBeSecured = 0;
-						AtLeastOneFound = 1;
-					}
-					else
-					{
-						for (OutputIndex = 0;OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs;OutputIndex++)
+						else
 						{
-							SignalIndex = SecureCombCircuit->Cells[CellIndex]->Outputs[OutputIndex];
-							if (SignalIndex != -1)
+							for (OutputIndex = 0;OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs;OutputIndex++)
 							{
-								for (InputIndex = 0;InputIndex < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex++)
-									if ((Library->CellTypes[SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->GateOrReg != CellType_Reg) &&
-										(SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex]]->ToBeSecured))
-										break;
+								SignalIndex = SecureCombCircuit->Cells[CellIndex]->Outputs[OutputIndex];
+								if (SignalIndex != -1)
+								{
+									for (InputIndex = 0;InputIndex < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex++)
+										if ((Library->CellTypes[SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->GateOrReg != CellType_Reg) &&
+											(SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex]]->ToBeSecured))
+											break;
 
-								if (InputIndex < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
-									break;
+									if (InputIndex < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
+										break;
+								}
+							}
+
+							if (OutputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs)
+							{
+								SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 0;
+								Circuit->Cells[CellIndex]->ToBeSecured = 0;
+								AtLeastOneFound = 1;
 							}
 						}
+					}
 
-						if (OutputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs)
+					//finding XORs
+
+					if ((!SecureCombCircuit->Cells[CellIndex]->Deleted) &&
+						(Library->CellTypes[SecureCombCircuit->Cells[CellIndex]->Type]->Type & GateType_XOR) &&
+						(SecureCombCircuit->Cells[CellIndex]->ToBeSecured))
+					{
+						SignalIndex1 = Circuit->Cells[CellIndex]->Inputs[0];
+						SignalIndex2 = Circuit->Cells[CellIndex]->Inputs[1];
+
+						if (((SecureCombCircuit->Signals[SignalIndex1]->Depth == 0) ||
+							(!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex1]->Output]->ToBeSecured)) &&
+							((SecureCombCircuit->Signals[SignalIndex2]->Depth == 0) ||
+							(!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex2]->Output]->ToBeSecured)))
 						{
 							SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 0;
 							Circuit->Cells[CellIndex]->ToBeSecured = 0;
 							AtLeastOneFound = 1;
 						}
+						else
+						{
+							for (OutputIndex = 0;OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs;OutputIndex++)
+							{
+								SignalIndex = SecureCombCircuit->Cells[CellIndex]->Outputs[OutputIndex];
+								if (SignalIndex != -1)
+								{
+									for (InputIndex = 0;InputIndex < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex++)
+										if ((Library->CellTypes[SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex]]->Type]->GateOrReg != CellType_Reg) &&
+											(SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex]]->ToBeSecured))
+											break;
+
+									if (InputIndex < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
+										break;
+								}
+							}
+
+							if (OutputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs)
+							{
+								SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 0;
+								Circuit->Cells[CellIndex]->ToBeSecured = 0;
+								AtLeastOneFound = 1;
+							}
+						}
 					}
 				}
-			}
-		} while (AtLeastOneFound);
+			} while (AtLeastOneFound);
 
-		// turning back some XORs to secure zone
+			// turning back some XORs to secure zone
 
-		do
-		{
-			AtLeastOneFound = 0;
-
-			for (CellIndex = 0;CellIndex < SecureCombCircuit->NumberOfCells;CellIndex++)
+			do
 			{
-				if ((!SecureCombCircuit->Cells[CellIndex]->Deleted) &&
-					(!SecureCombCircuit->Cells[CellIndex]->ToBeSecured) &&
-					(Library->CellTypes[SecureCombCircuit->Cells[CellIndex]->Type]->Type & GateType_XOR))
+				AtLeastOneFound = 0;
+
+				for (CellIndex = 0;CellIndex < SecureCombCircuit->NumberOfCells;CellIndex++)
 				{
-					for (InputIndex = 0;InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
+					if ((!SecureCombCircuit->Cells[CellIndex]->Deleted) &&
+						(!SecureCombCircuit->Cells[CellIndex]->ToBeSecured) &&
+						(Library->CellTypes[SecureCombCircuit->Cells[CellIndex]->Type]->Type & GateType_XOR))
 					{
-						SignalIndex = SecureCombCircuit->Cells[CellIndex]->Inputs[InputIndex];
-
-						for (InputIndex2 = 0;InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex2++)
-							if (SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex2]]->ToBeSecured)
-								break;
-
-						if (InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
-							break;
-					}
-
-					if (InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs)
-					{
-						for (OutputIndex = 0;OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs;OutputIndex++)
+						for (InputIndex = 0;InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
 						{
-							SignalIndex = SecureCombCircuit->Cells[CellIndex]->Outputs[OutputIndex];
+							SignalIndex = SecureCombCircuit->Cells[CellIndex]->Inputs[InputIndex];
+
 							for (InputIndex2 = 0;InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex2++)
 								if (SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex2]]->ToBeSecured)
 									break;
 
 							if (InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
-								break;
-						}
-
-						if (OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs)
-						{
-							SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 1;
-							Circuit->Cells[CellIndex]->ToBeSecured = 1;
-							AtLeastOneFound = 1;
-						}
-					}
-
-					if (!SecureCombCircuit->Cells[CellIndex]->ToBeSecured)
-					{
-						AtLeastOneSecure = 0;
-						for (InputIndex = 0;InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
-						{
-							SignalIndex = SecureCombCircuit->Cells[CellIndex]->Inputs[InputIndex];
-							if (SecureCombCircuit->Signals[SignalIndex]->Output != -1)
-								if (SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Output]->ToBeSecured)
-									AtLeastOneSecure = 1;
-								else
-									break;
-						}
-
-						if ((InputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfInputs) &&
-							(AtLeastOneSecure))
-						{
-							SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 1;
-							Circuit->Cells[CellIndex]->ToBeSecured = 1;
-							AtLeastOneFound = 1;
-						}
-
-					}
-
-				}
-			}
-		} while (AtLeastOneFound);
-
-		// turning again back some XORs to normal zone
-
-		do
-		{
-			AtLeastOneFound = 0;
-
-			for (CellIndex = 0;CellIndex < SecureCombCircuit->NumberOfCells;CellIndex++)
-			{
-				if ((!SecureCombCircuit->Cells[CellIndex]->Deleted) &&
-					(SecureCombCircuit->Cells[CellIndex]->ToBeSecured) &&
-					(Library->CellTypes[SecureCombCircuit->Cells[CellIndex]->Type]->Type & GateType_XOR))
-				{
-					for (InputIndex = 0;InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
-					{
-						SignalIndex = SecureCombCircuit->Cells[CellIndex]->Inputs[InputIndex];
-						if ((SecureCombCircuit->Signals[SignalIndex]->Output != -1) &&
-							(SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Output]->ToBeSecured))
-							break;
-					}
-
-					if (InputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfInputs)
-					{
-						for (InputIndex = 0;InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
-						{
-							SignalIndex = SecureCombCircuit->Cells[CellIndex]->Inputs[InputIndex];
-							if (SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs == 1)
 								break;
 						}
 
 						if (InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs)
 						{
-							SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 0;
-							Circuit->Cells[CellIndex]->ToBeSecured = 0;
-							AtLeastOneFound = 1;
-						}
-					}
+							for (OutputIndex = 0;OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs;OutputIndex++)
+							{
+								SignalIndex = SecureCombCircuit->Cells[CellIndex]->Outputs[OutputIndex];
+								for (InputIndex2 = 0;InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex2++)
+									if (SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex2]]->ToBeSecured)
+										break;
 
-					if (SecureCombCircuit->Cells[CellIndex]->ToBeSecured)
-					{
-						for (OutputIndex = 0;OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs;OutputIndex++)
-						{
-							SignalIndex = SecureCombCircuit->Cells[CellIndex]->Outputs[OutputIndex];
-							for (InputIndex2 = 0;InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex2++)
-								if (SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex2]]->ToBeSecured)
+								if (InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
 									break;
+							}
 
-							if (InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
+							if (OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs)
+							{
+								SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 1;
+								Circuit->Cells[CellIndex]->ToBeSecured = 1;
+								AtLeastOneFound = 1;
+							}
+						}
+
+						if (!SecureCombCircuit->Cells[CellIndex]->ToBeSecured)
+						{
+							AtLeastOneSecure = 0;
+							for (InputIndex = 0;InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
+							{
+								SignalIndex = SecureCombCircuit->Cells[CellIndex]->Inputs[InputIndex];
+								if (SecureCombCircuit->Signals[SignalIndex]->Output != -1)
+									if (SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Output]->ToBeSecured)
+										AtLeastOneSecure = 1;
+									else
+										break;
+							}
+
+							if ((InputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfInputs) &&
+								(AtLeastOneSecure))
+							{
+								SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 1;
+								Circuit->Cells[CellIndex]->ToBeSecured = 1;
+								AtLeastOneFound = 1;
+							}
+
+						}
+
+					}
+				}
+			} while (AtLeastOneFound);
+
+			// turning again back some XORs to normal zone
+
+			do
+			{
+				AtLeastOneFound = 0;
+
+				for (CellIndex = 0;CellIndex < SecureCombCircuit->NumberOfCells;CellIndex++)
+				{
+					if ((!SecureCombCircuit->Cells[CellIndex]->Deleted) &&
+						(SecureCombCircuit->Cells[CellIndex]->ToBeSecured) &&
+						(Library->CellTypes[SecureCombCircuit->Cells[CellIndex]->Type]->Type & GateType_XOR))
+					{
+						for (InputIndex = 0;InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
+						{
+							SignalIndex = SecureCombCircuit->Cells[CellIndex]->Inputs[InputIndex];
+							if ((SecureCombCircuit->Signals[SignalIndex]->Output != -1) &&
+								(SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Output]->ToBeSecured))
 								break;
 						}
 
-						if (OutputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs)
+						if (InputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfInputs)
 						{
 							for (InputIndex = 0;InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
 							{
 								SignalIndex = SecureCombCircuit->Cells[CellIndex]->Inputs[InputIndex];
-								for (InputIndex2 = 0;InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex2++)
-									if (!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex2]]->ToBeSecured)
-										break;
-
-								if (InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
+								if (SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs == 1)
 									break;
 							}
 
@@ -5046,12 +4980,45 @@ int ExtractSecureCombinatorial(LibraryStruct* Library, CircuitStruct* Circuit, C
 								AtLeastOneFound = 1;
 							}
 						}
+
+						if (SecureCombCircuit->Cells[CellIndex]->ToBeSecured)
+						{
+							for (OutputIndex = 0;OutputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs;OutputIndex++)
+							{
+								SignalIndex = SecureCombCircuit->Cells[CellIndex]->Outputs[OutputIndex];
+								for (InputIndex2 = 0;InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex2++)
+									if (SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex2]]->ToBeSecured)
+										break;
+
+								if (InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
+									break;
+							}
+
+							if (OutputIndex == SecureCombCircuit->Cells[CellIndex]->NumberOfOutputs)
+							{
+								for (InputIndex = 0;InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs;InputIndex++)
+								{
+									SignalIndex = SecureCombCircuit->Cells[CellIndex]->Inputs[InputIndex];
+									for (InputIndex2 = 0;InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs;InputIndex2++)
+										if (!SecureCombCircuit->Cells[SecureCombCircuit->Signals[SignalIndex]->Inputs[InputIndex2]]->ToBeSecured)
+											break;
+
+									if (InputIndex2 < SecureCombCircuit->Signals[SignalIndex]->NumberOfInputs)
+										break;
+								}
+
+								if (InputIndex < SecureCombCircuit->Cells[CellIndex]->NumberOfInputs)
+								{
+									SecureCombCircuit->Cells[CellIndex]->ToBeSecured = 0;
+									Circuit->Cells[CellIndex]->ToBeSecured = 0;
+									AtLeastOneFound = 1;
+								}
+							}
+						}
 					}
 				}
-
-			}
-		} while (AtLeastOneFound);
-
+			} while (AtLeastOneFound);
+		}
 
 		for (DepthIndex = 0;DepthIndex <= SecureCombCircuit->MaxDepth;DepthIndex++)
 			for (TempIndex = 0;TempIndex < SecureCombCircuit->NumberOfCellsInDepth[DepthIndex];TempIndex++)

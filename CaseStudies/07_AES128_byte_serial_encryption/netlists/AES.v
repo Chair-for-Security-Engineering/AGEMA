@@ -6,7 +6,7 @@ module AES ( clk, start, plaintext, key, ciphertext, done );
   (* AGEMA = "reset" *)  input start;
 
   output [127:0] ciphertext;
-  output done;
+  (* AGEMA = "control" *) output done;
 
   wire   nReset, selMC, selSR, selXOR, enRCon, finalStep, intFinal, intselXOR,
          notFirst, n10, n9, n12, n13, ctrl_n16, ctrl_n15, ctrl_n14, ctrl_n11,

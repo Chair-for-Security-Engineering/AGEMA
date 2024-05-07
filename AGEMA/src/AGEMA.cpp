@@ -5,7 +5,7 @@
  * DOCUMENT: https://eprint.iacr.org/2021/569/
  * -----------------------------------------------------------------
  *
- * Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Müller, Pascal Sasdrich
+ * Copyright (c) 2021, David Knichel, Amir Moradi, Nicolai Mï¿½ller, Pascal Sasdrich
  *
  * All rights reserved.
  *
@@ -23,14 +23,12 @@
  * Please see LICENSE and README for license and further instructions.
  */
 
-#include "eval.h"
-#include "Translation.h"
-
 #include <vector>
 #include <string>
 #include <fstream>
 #include <iostream>
 
+#include "Translation.h"
 #include "conversion.hpp"
 
 int main(int argc, char *argv[])
@@ -39,14 +37,17 @@ int main(int argc, char *argv[])
 	char* LibraryPath = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* LibraryName = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* InputVerilogFileName = (char *)malloc(Max_Name_Length * sizeof(char));
+	char* AttributeReportFileName = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* MainModuleName = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* Method = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* Scheme = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* OrderText = (char *)malloc(Max_Name_Length * sizeof(char));
 	char* LowerCase = (char *)malloc(Max_Name_Length * sizeof(char));
+	char* MessageSizeText = (char *)malloc(Max_Name_Length * sizeof(char));
 
 	LibraryFileName[0] = 0;
 	InputVerilogFileName[0] = 0;
+	AttributeReportFileName[0] = 0;
 	Method[0] = 0;
 	Scheme[0] = 0;
 	OrderText[0] = 0;
@@ -57,6 +58,8 @@ int main(int argc, char *argv[])
 	char  WriteDepths = 0;
 	char  SecurityOrder; // d > 0 (1: first-order security with 2 shares)
 	char  SeparateUnmaskedModule = 0;
+	char  MessageSize = 0;
+	char  NoOptimization = 0;
 	int   i;
 
 	if (argc > 1)
@@ -64,7 +67,7 @@ int main(int argc, char *argv[])
 		if ((!strcmp(argv[1], "-h")) || (!strcmp(argv[1], "-?")) || (!strcmp(argv[1], "/?")) || (!strcmp(argv[1], "-help")))
 		{
 			printf("usage:\n");
-			printf("AGEMA.exe [-lf/-libraryfile ?] [-df/-designfile     ?]\n");
+			printf("AGEMA.exe [-lf/-libraryfile ?] [-df/-designfile ?] [-rf/-reportfile ?]\n");
 			printf("          [-mn/-modulename  ?] [-mt/-method ?] [-sc/-scheme ?]\n");
 			printf("          [-so/-order       ?] [options]\n");
 			printf("\n");
@@ -73,6 +76,7 @@ int main(int argc, char *argv[])
 			printf("                 : BDDsylvan -> using BDD (Sylvan library) to generate mux-based netlist\n");
 			printf("                 : BDDcudd   -> using BDD (CUDD library) library to generate mux-based netlist\n");
 			printf("                 : ANF       -> using Algebraic Normal Form to generate the netlist (only for GHPC and GHPCLL)\n");
+			printf("                 : IC2       -> using Impeccable Circuits II to protect the design against faults\n");
 			printf("\n");
 			printf("-sc/-scheme <x>  : HPC1      -> Hardware Private Circuit\n");
 			printf("                 : HPC2      -> Hardware Private Circuit II\n");
@@ -121,6 +125,17 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 		}
+		else if ((!strcmp(LowerCase, "-rf")) || (!strcmp(LowerCase, "-reportfile")))
+		{
+			i++;
+			if (i < argc)
+				strcpy(AttributeReportFileName, argv[i++]);
+			else
+			{
+				printf("arguments for \"%s\" not complete\n", argv[i - 1]);
+				return 1;
+			}
+		}		
 		else if ((!strcmp(LowerCase, "-mn")) || (!strcmp(LowerCase, "-modulename")))
 		{
 			i++;
@@ -150,6 +165,8 @@ int main(int argc, char *argv[])
 					strcpy(Method, "BDDcudd");
 				else if (!strcmp(LowerCase, "anf"))
 					strcpy(Method, "ANF");
+				else if (!strcmp(LowerCase, "ic2"))
+					strcpy(Method, "IC2");
 				else
 				{
 					printf("method \"%s\" not known\n", argv[i]);
@@ -209,6 +226,17 @@ int main(int argc, char *argv[])
 				return 1;
 			}
 		}
+		else if ((!strcmp(LowerCase, "-ms")) || (!strcmp(LowerCase, "-messagesize")))
+		{
+			i++;
+			if (i < argc)
+				strcpy(MessageSizeText, argv[i++]);
+			else
+			{
+				printf("arguments for \"%s\" not complete\n", argv[i - 1]);
+				return 1;
+			}
+		}		
 		else if ((!strcmp(LowerCase, "-cg")) || (!strcmp(LowerCase, "-clockgating")))
 		{
 			MakePipeline = 0;
@@ -234,6 +262,11 @@ int main(int argc, char *argv[])
 			SeparateUnmaskedModule = 1;
 			i++;
 		}
+		else if ((!strcmp(LowerCase, "-noopt")) || (!strcmp(LowerCase, "-nooptimization")))
+		{
+			NoOptimization = 1;
+			i++;
+		}		
 		else
 		{
 			printf("argument \"%s\" not known\n", argv[i]);
@@ -251,6 +284,12 @@ int main(int argc, char *argv[])
 	{
 		strcpy(InputVerilogFileName, "design.v");
 		printf("default designfile \t\"%s\" \tis taken\n", InputVerilogFileName);
+	}
+
+	if (!AttributeReportFileName[0])
+	{
+		strcpy(AttributeReportFileName, "report.rpt");
+		printf("default attribute reportfile \t\"%s\" \tis taken\n", InputVerilogFileName);
 	}
 
 	if (!MainModuleName[0])
@@ -287,6 +326,19 @@ int main(int argc, char *argv[])
 		printf("given security order \"%s\" is not valid (should be larger than 0)\n", OrderText);
 		return 1;
 	}
+	
+	if (!MessageSizeText[0])
+	{
+		strcpy(MessageSizeText, "1");
+		printf("default message size \t\"%s\"       \tis taken\n", MessageSizeText);
+	}
+
+	MessageSize = atoi(MessageSizeText);
+	if (MessageSize < 1)
+	{
+		printf("given message size \"%s\" is not valid (should be larger than 0)\n", MessageSizeText);
+		return 1;
+	}	
 
 	//--------------------------------------
 
@@ -353,50 +405,69 @@ int main(int argc, char *argv[])
 		else if ((!strcmp(Method, "AIG")) ||
 			(!strcmp(Method, "BDDsylvan")) ||
 			(!strcmp(Method, "BDDcudd")) ||
-			(!strcmp(Method, "ANF")))
+			(!strcmp(Method, "ANF")) ||
+			(!strcmp(Method, "IC2")))
 		{
 			CircuitStruct  SecureCombCircuit;
 
 			KeepOriginalNames = 0;
 			res = ReadDesignFile(InputVerilogFileName, MainModuleName, &Library, &SecureCombCircuit, (char*)ToolName, Scheme, 0);
 
-			if (!res)
+			if (!res){
 				res = ExtractSecureCombinatorial(&Library, &Circuit, &SecureCombCircuit, Method);
+			}
 
-			if (!res)
+			if (!res){
 				res = WriteCustomizedFile(InputVerilogFileName, &Library, &SecureCombCircuit, CustomFileName);
+			}
 
-			if (!res)
+			if (!strcmp(Method, "IC2")) 
 			{
-				printf("netlist file is written for step2\n");
+    			std::string instructions, topmodule;
+    			instructions = std::string(CustomFileName);
+    			topmodule = instructions.substr(instructions.find_last_of("/") + 1, instructions.length() - instructions.find_last_of("/") - 4);
 
-				//********** run the middle program *****//
-
-				LowLatency = !strcmp(Scheme, "GHPCLL");
-				strcpy(LibraryPath, LibraryFileName);
-				for (i = strlen(LibraryPath) - 1;i >= 0;i--)
-					if ((LibraryPath[i] == '/') || (LibraryPath[i] == '\\'))
-						break;
-
-				LibraryPath[i + 1] = 0;
-
-				convert(std::string(CustomFileName), std::string(Method), LowLatency, MakePipeline, LibraryPath);
+				if (!res)
+					res = convertImpeccableCircuitsII(instructions, topmodule, (std::string)AttributeReportFileName, &Library, &Circuit, &SecureCombCircuit, MessageSize, SecurityOrder, NoOptimization);	
 
 				remove(CustomFileName);
+			}
+			else
+			{
+				if (!res)
+				{
+					printf("netlist file is written for step2\n");
 
-				res = ProcessStep2(InputVerilogFileName, MainModuleName, &Library, &Circuit, (char*)ToolName, Method, LowLatency);
-				CircuitPtr = &Circuit;
+					//********** run the middle program *****//
+
+					LowLatency = !strcmp(Scheme, "GHPCLL");
+					strcpy(LibraryPath, LibraryFileName);
+					for (i = strlen(LibraryPath) - 1;i >= 0;i--)
+						if ((LibraryPath[i] == '/') || (LibraryPath[i] == '\\'))
+							break;
+
+					LibraryPath[i + 1] = 0;
+
+					convert(std::string(CustomFileName), std::string(Method), LowLatency, MakePipeline, LibraryPath);
+
+					remove(CustomFileName);
+
+					res = ProcessStep2(InputVerilogFileName, MainModuleName, &Library, &Circuit, (char*)ToolName, Method, LowLatency);
+					CircuitPtr = &Circuit;
+				}
 			}
 		}
 	}
+	
+	if (strcmp(Method, "IC2")){
+		if (!res)
+			res = ApplyMasking(&Library, CircuitPtr, Method, SecurityOrder, Scheme, MakePipeline);
 
-	if (!res)
-		res = ApplyMasking(&Library, CircuitPtr, SecurityOrder, Scheme, MakePipeline);
-
-	if (!res)
-		WriteVerilogFile(InputVerilogFileName, MainModuleName, Method, Scheme, LibraryName,
-			SecurityOrder, KeepOriginalNames, WriteInOrder, WriteDepths,
-			MakePipeline, SeparateUnmaskedModule, &Library, CircuitPtr);
+		if (!res)
+			WriteVerilogFile(InputVerilogFileName, MainModuleName, Method, Scheme, LibraryName,
+				SecurityOrder, KeepOriginalNames, WriteInOrder, WriteDepths,
+				MakePipeline, SeparateUnmaskedModule, &Library, CircuitPtr);
+	}
 
 	free(LibraryFileName);
 	free(LibraryPath);
